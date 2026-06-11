@@ -69,13 +69,14 @@ def search():
     q = request.args.get("q", "").strip()
     state = request.args.get("state", "")
     ntee = request.args.get("ntee", "")
-    page = int(request.args.get("page", 0))
+    page_raw = request.args.get("page", "0")
+    page = int(page_raw) if page_raw.isdigit() else 0
     results = None
     error = None
     if q or state or ntee:
         try:
             results = propublica.search(q=q, state=state or None,
-                                        ntee=int(ntee) if ntee else None, page=page)
+                                        ntee=int(ntee) if ntee.isdigit() else None, page=page)
         except Exception as e:
             error = f"Search failed (are you online?): {e}"
     pipeline_eins = {r["ein"] for r in db.pipeline_all() if r["ein"]}
@@ -119,15 +120,14 @@ def grants():
     year = request.args.get("year", "").strip()
     min_amount = request.args.get("min_amount", "").strip()
     preset = request.args.get("preset", "")
+    year_n = int(year) if year.isdigit() else None
+    min_n = int(min_amount) if min_amount.isdigit() else None
     if preset == "vision" and not q:
-        rows = [g for g in db.search_grants(state=state or None,
-                                            year=int(year) if year else None, limit=5000)
+        rows = [g for g in db.search_grants(state=state or None, year=year_n, limit=5000)
                 if is_vision_match(g["purpose"], g["recipient_name"])][:300]
     else:
         rows = db.search_grants(q=q or None, state=state or None,
-                                year=int(year) if year else None,
-                                min_amount=int(min_amount) if min_amount.isdigit() else None,
-                                limit=300)
+                                year=year_n, min_amount=min_n, limit=300)
     stats = db.grants_stats()
     return render_template("grants.html", rows=rows, q=q, state=state, year=year,
                            min_amount=min_amount, preset=preset, stats=stats,
