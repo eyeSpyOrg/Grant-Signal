@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}{{ org.name if org else "Organization" }} — Eye Spy Grant Scout{% endblock %}
+{% block content %}
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+{% if org %}
+<h1>{{ org.name }}</h1>
+<p class="muted">
+  EIN {{ org.ein | ein_fmt }} · {{ org.city }}{% if org.state %}, {{ org.state }}{% endif %}
+  {% if org.ntee_code %} · NTEE {{ org.ntee_code }}{% endif %}
+  {% if org.subsection_code %} · 501(c)({{ org.subsection_code }}){% endif %}
+  {% if is_foundation %} <span class="badge badge-form">Private foundation (990-PF) — makes grants</span>{% endif %}
+</p>
+
+<div class="toolbar">
+  {% if in_pipeline %}
+    <span class="badge status-Awarded">In your pipeline</span>
+  {% else %}
+  <form method="post" action="{{ url_for('pipeline_add') }}">
+    <input type="hidden" name="ein" value="{{ ein }}">
+    <input type="hidden" name="name" value="{{ org.name }}">
+    <input type="hidden" name="next" value="{{ request.path }}">
+    <button class="btn" type="submit">+ Add to pipeline</button>
+  </form>
+  {% endif %}
+  <form method="post" action="{{ url_for('indexer_add') }}">
+    <input type="hidden" name="ein" value="{{ ein }}">
+    <input type="hidden" name="name" value="{{ org.name }}">
+    <input type="hidden" name="next" value="{{ request.path }}">
+    <button class="btn btn-ghost" type="submit">
+      {% if filings_indexed %}Re-check for new filings{% else %}Index this funder’s grants{% endif %}
+    </button>
+  </form>
+  <a class="btn btn-ghost" href="https://projects.propublica.org/nonprofits/organizations/{{ ein }}"
+     rel="noopener">View on ProPublica ↗</a>
+</div>
+
+{% if history %}
+<div class="card">
+  <h2>Financial history</h2>
+  <div class="table-scroll">
+  <table>
+    <thead><tr>
+      <th scope="col">Tax year</th><th scope="col">Form</th>
+      <th scope="col" class="num">Total revenue</th><th scope="col" class="num">Total expenses</th>
+      <th scope="col" class="num">Total assets</th>
+      {% if is_foundation %}<th scope="col" class="num">Qualifying distributions</th>{% endif %}
+      <th scope="col">990 PDF</th>
+    </tr></thead>
+    <tbody>
+      {% for h in history %}
+      <tr>
+        <td>{{ h.year }}</td><td>{{ h.form }}</td>
+        <td class="num">{{ h.revenue | money }}</td>
+        <td class="num">{{ h.expenses | money }}</td>
+        <td class="num">{{ h.assets | money }}</td>
+        {% if is_foundation %}<td class="num">{{ h.grants_paid | money }}</td>{% endif %}
+        <td>{% if h.pdf_url %}<a href="{{ h.pdf_url }}" rel="noopener">PDF ↗</a>{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}
+
+{% if people %}
+<div class="card">
+  <h2>Key people <span class="muted small">(from most recent indexed 990)</span></h2>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th scope="col">Name</th><th scope="col">Title</th><th scope="col" class="num">Compensation</th></tr></thead>
+    <tbody>
+      {% for p in people %}
+      <tr><td>{{ p.name }}</td><td>{{ p.title or "—" }}</td><td class="num">{{ p.compensation | money }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Grants made by this organization
+    {% if grants %}<span class="badge badge-tag">{{ grants|length }} shown</span>{% endif %}</h2>
+  {% if grants %}
+    <div class="table-scroll">
+    <table>
+      <thead><tr>
+        <th scope="col">Year</th><th scope="col">Recipient</th><th scope="col">Location</th>
+        <th scope="col">Purpose</th><th scope="col" class="num">Amount</th>
+      </tr></thead>
+      <tbody>
+        {% for g in grants %}
+        <tr>
+          <td>{{ g.tax_year or "—" }}{% if g.is_future %} <span class="badge badge-tag">future</span>{% endif %}</td>
+          <td>{{ g.recipient_name or "—" }}
+            {% if vision_match(g.purpose, g.recipient_name) %}<span class="badge badge-vision">vision</span>{% endif %}</td>
+          <td>{% if g.city %}{{ g.city }}, {% endif %}{{ g.state or "" }}</td>
+          <td class="small">{{ g.purpose or "—" }}</td>
+          <td class="num">{{ g.amount | money }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  {% elif filings_indexed %}
+    <p class="muted">Indexed {{ filings_indexed|length }} filing(s) but found no itemized grants —
+      this org may not be a grantmaker, or reports grants only on paper filings.</p>
+  {% else %}
+    <p class="muted">Not indexed yet. Click <strong>“Index this funder’s grants”</strong> above to download and
+      parse this organization’s 990 filings (takes ~30 seconds). Then refresh this page.</p>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

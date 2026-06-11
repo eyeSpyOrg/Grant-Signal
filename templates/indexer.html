@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Indexer — Eye Spy Grant Scout{% endblock %}
+{% block content %}
+<h1>Grant Indexer</h1>
+<p class="muted">The indexer downloads a funder’s IRS 990 filings (raw XML from the public IRS e-file release)
+and loads every itemized grant into your local, searchable database. Currently:
+<strong>{{ "{:,}".format(stats.grants) }} grants from {{ stats.funders }} funders.</strong></p>
+
+<div class="card">
+  <h2>Status</h2>
+  <div id="indexer-status" aria-live="polite"><p class="muted">Loading status…</p></div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <h2>Starter funders</h2>
+    <p class="small muted">A curated list of Jacksonville-area foundations and national vision/blindness funders
+      (EINs verified against IRS records).</p>
+    <form method="post" action="{{ url_for('indexer_seed') }}">
+      <button class="btn" type="submit">Index all {{ seed|length }} starter funders</button>
+    </form>
+    <table>
+      <thead><tr><th scope="col">Funder</th><th scope="col">Focus</th><th scope="col"></th></tr></thead>
+      <tbody>
+        {% for f in seed %}
+        <tr>
+          <td><a href="{{ url_for('org_profile', ein=f.ein) }}">{{ f.name }}</a></td>
+          <td><span class="badge badge-tag">{{ f.tag }}</span></td>
+          <td>
+            <form method="post" action="{{ url_for('indexer_add') }}">
+              <input type="hidden" name="ein" value="{{ f.ein }}">
+              <input type="hidden" name="name" value="{{ f.name }}">
+              <button class="btn btn-ghost btn-sm" type="submit">Index</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Index any funder by EIN</h2>
+    <form method="post" action="{{ url_for('indexer_add') }}">
+      <div class="form-row">
+        <div>
+          <label for="ix-ein">EIN</label>
+          <input type="text" id="ix-ein" name="ein" placeholder="59-6368632" required>
+        </div>
+        <div class="grow">
+          <label for="ix-name">Name (optional)</label>
+          <input type="text" id="ix-name" name="name">
+        </div>
+        <div class="shrink"><button class="btn" type="submit">Queue for indexing</button></div>
+      </div>
+    </form>
+    <p class="small muted">Don’t know the EIN? Use <a href="{{ url_for('search') }}">Find Funders</a> —
+      every search result has an “Index grants” button.</p>
+    <h2>How it works</h2>
+    <ul class="small">
+      <li>Private foundations (Form 990-PF) must list <em>every grant they pay</em> — recipient, location, purpose, amount.</li>
+      <li>Public charities (Form 990, Schedule I) list grants of $5,000+ to organizations.</li>
+      <li>The indexer pulls each funder’s {{ 6 }} most recent e-filed returns and stores the grants locally.</li>
+      <li>Everything is cached — re-indexing a funder only fetches new filings.</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}

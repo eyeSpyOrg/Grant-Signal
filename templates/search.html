@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Find Funders — Eye Spy Grant Scout{% endblock %}
+{% block content %}
+<h1>Find Funders &amp; Nonprofits</h1>
+<p class="muted">Searches every tax-exempt organization registered with the IRS (via ProPublica Nonprofit Explorer).</p>
+
+<form method="get" action="{{ url_for('search') }}" class="card" role="search" aria-label="Funder search">
+  <div class="form-row">
+    <div class="grow">
+      <label for="q">Name or keyword</label>
+      <input type="text" id="q" name="q" value="{{ q }}" placeholder="e.g. foundation, blind, community trust">
+    </div>
+    <div>
+      <label for="state">State</label>
+      <select id="state" name="state">
+        <option value="">All states</option>
+        {% for s in states %}<option value="{{ s }}" {% if state==s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="ntee">Category</label>
+      <select id="ntee" name="ntee">
+        <option value="">All categories</option>
+        {% for k, v in ntee_categories.items() %}
+          <option value="{{ k }}" {% if ntee and ntee|int==k %}selected{% endif %}>{{ v }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="shrink">
+      <button class="btn" type="submit">Search</button>
+    </div>
+  </div>
+  <div class="toolbar small">
+    <span class="muted">Quick searches:</span>
+    <a href="{{ url_for('search', q='foundation', state='FL') }}">Florida foundations</a> ·
+    <a href="{{ url_for('search', q='blind') }}">“blind” nationwide</a> ·
+    <a href="{{ url_for('search', q='vision', state='FL') }}">“vision” in Florida</a> ·
+    <a href="{{ url_for('search', q='community foundation', state='FL') }}">FL community foundations</a>
+  </div>
+</form>
+
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+{% if results %}
+  <p aria-live="polite"><strong>{{ "{:,}".format(results.total_results) }}</strong> result(s){% if results.num_pages > 1 %} — page {{ page + 1 }} of {{ results.num_pages }}{% endif %}</p>
+  {% if results.organizations %}
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr><th scope="col">Organization</th><th scope="col">Location</th><th scope="col">EIN</th><th scope="col">Actions</th></tr>
+    </thead>
+    <tbody>
+      {% for o in results.organizations %}
+      <tr>
+        <td><a href="{{ url_for('org_profile', ein=o.ein) }}"><strong>{{ o.name }}</strong></a>
+            {% if o.sub_name and o.sub_name != o.name %}<br><span class="small muted">{{ o.sub_name }}</span>{% endif %}</td>
+        <td>{{ o.city }}, {{ o.state }}</td>
+        <td>{{ o.ein | ein_fmt }}</td>
+        <td>
+          {% if o.ein|string in pipeline_eins %}
+            <span class="badge status-Awarded">In pipeline</span>
+          {% else %}
+          <form method="post" action="{{ url_for('pipeline_add') }}" style="display:inline">
+            <input type="hidden" name="ein" value="{{ o.ein }}">
+            <input type="hidden" name="name" value="{{ o.name }}">
+            <input type="hidden" name="next" value="{{ request.full_path }}">
+            <button class="btn btn-ghost btn-sm" type="submit">+ Pipeline</button>
+          </form>
+          {% endif %}
+          <form method="post" action="{{ url_for('indexer_add') }}" style="display:inline">
+            <input type="hidden" name="ein" value="{{ o.ein }}">
+            <input type="hidden" name="name" value="{{ o.name }}">
+            <input type="hidden" name="next" value="{{ request.full_path }}">
+            <button class="btn btn-ghost btn-sm" type="submit" title="Download this org's 990 grant lists">Index grants</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <nav class="pager" aria-label="Search result pages">
+    {% if page > 0 %}<a class="btn btn-ghost" href="{{ url_for('search', q=q, state=state, ntee=ntee, page=page-1) }}">← Previous</a>{% endif %}
+    {% if page + 1 < results.num_pages %}<a class="btn btn-ghost" href="{{ url_for('search', q=q, state=state, ntee=ntee, page=page+1) }}">Next →</a>{% endif %}
+  </nav>
+  {% else %}
+    <p class="muted">No organizations matched. Try fewer words or remove filters.</p>
+  {% endif %}
+{% endif %}
+{% endblock %}

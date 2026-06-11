@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}My Pipeline — Eye Spy Grant Scout{% endblock %}
+{% block content %}
+<h1>My Grant Pipeline</h1>
+<p class="muted">Track every funder prospect from first research to award. Saved locally on this computer.</p>
+
+<details class="card">
+  <summary><strong>+ Add a prospect manually</strong></summary>
+  <form method="post" action="{{ url_for('pipeline_add') }}">
+    <div class="form-row">
+      <div class="grow">
+        <label for="np-name">Funder name (required)</label>
+        <input type="text" id="np-name" name="name" required>
+      </div>
+      <div>
+        <label for="np-ein">EIN (optional)</label>
+        <input type="text" id="np-ein" name="ein" placeholder="59-1234567">
+      </div>
+      <div>
+        <label for="np-status">Status</label>
+        <select id="np-status" name="status">
+          {% for s in statuses %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div>
+        <label for="np-ask">Ask amount</label>
+        <input type="text" id="np-ask" name="ask_amount" placeholder="$10,000">
+      </div>
+      <div>
+        <label for="np-deadline">Deadline</label>
+        <input type="date" id="np-deadline" name="deadline">
+      </div>
+      <div class="grow">
+        <label for="np-contact">Contact</label>
+        <input type="text" id="np-contact" name="contact" placeholder="Name, email, phone">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="grow">
+        <label for="np-notes">Notes</label>
+        <textarea id="np-notes" name="notes"></textarea>
+      </div>
+      <div class="shrink"><button class="btn" type="submit">Add prospect</button></div>
+    </div>
+  </form>
+</details>
+
+{% if rows %}
+{% for p in rows %}
+<div class="card">
+  <h2 style="margin-top:0">
+    {% if p.ein %}<a href="{{ url_for('org_profile', ein=p.ein) }}">{{ p.name }}</a>{% else %}{{ p.name }}{% endif %}
+    <span class="badge status-{{ p.status | replace(' ','.') }}">{{ p.status }}</span>
+    {% if p.deadline %}<span class="badge badge-tag">Due {{ p.deadline }}</span>{% endif %}
+  </h2>
+  <form method="post" action="{{ url_for('pipeline_update', pid=p.id) }}">
+    <div class="form-row">
+      <div>
+        <label for="st-{{ p.id }}">Status</label>
+        <select id="st-{{ p.id }}" name="status">
+          {% for s in statuses %}<option value="{{ s }}" {% if p.status==s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="ask-{{ p.id }}">Ask amount</label>
+        <input type="text" id="ask-{{ p.id }}" name="ask_amount" value="{{ p.ask_amount or '' }}">
+      </div>
+      <div>
+        <label for="dl-{{ p.id }}">Deadline</label>
+        <input type="date" id="dl-{{ p.id }}" name="deadline" value="{{ p.deadline or '' }}">
+      </div>
+      <div class="grow">
+        <label for="ct-{{ p.id }}">Contact</label>
+        <input type="text" id="ct-{{ p.id }}" name="contact" value="{{ p.contact or '' }}">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="grow">
+        <label for="nt-{{ p.id }}">Notes</label>
+        <textarea id="nt-{{ p.id }}" name="notes">{{ p.notes or '' }}</textarea>
+      </div>
+      <div class="shrink">
+        <button class="btn" type="submit">Save</button>
+      </div>
+    </div>
+  </form>
+  <form method="post" action="{{ url_for('pipeline_delete', pid=p.id) }}"
+        onsubmit="return confirm('Remove {{ p.name|e }} from your pipeline?')">
+    <button class="btn btn-danger btn-sm" type="submit">Remove</button>
+  </form>
+</div>
+{% endfor %}
+{% else %}
+<p class="muted">Your pipeline is empty. <a href="{{ url_for('search') }}">Find funders</a> and click “+ Pipeline”,
+or add one manually above.</p>
+{% endif %}
+{% endblock %}
