@@ -1,0 +1,25 @@
+EYE SPY GRANT SCOUT - QUICK START
+==================================
+
+FIRST TIME ONLY:
+  1. If this arrived as a ZIP file: right-click it, choose
+     "Extract All...", and use the extracted folder.
+  2. Install Python (free): go to  python.org/downloads  and click
+     the yellow "Download Python" button. When the installer opens,
+     TICK THE CHECKBOX "Add python.exe to PATH" on the first screen
+     (bottom of the window), then click "Install Now".
+
+EVERY TIME:
+  3. Double-click the file called  run.bat
+     A black window opens, then your web browser opens the app.
+
+  - Keep the black window open while you use the app.
+  - To stop, close the black window.
+  - Your saved work stays on this computer between sessions.
+
+FIRST THING TO DO IN THE APP:
+  On the Dashboard, click "Index all starter funders now".
+  This loads grant histories for 11 Jacksonville-area and
+  vision-focused foundations (takes a few minutes, one time).
+
+Problems? Open README.md - it has a troubleshooting table.

@@ -18,15 +18,40 @@ your own computer in a local database file.
 
 ---
 
-## Setup (Windows — for the Eye Spy team)
+## Setup for the Eye Spy team (Windows — no technical experience needed)
 
-1. **Install Python** (one time): go to <https://www.python.org/downloads/>, download, and run the installer.
-   ⚠️ On the first screen, **check the box "Add python.exe to PATH"**, then click *Install Now*.
-2. **Get this folder** onto your computer (copy it, or `git clone` it).
-3. **Double-click `run.bat`** inside the folder.
-   It installs the two required libraries, starts the app, and opens your browser to
-   <http://127.0.0.1:5000>.
-4. Leave the black console window open while you use the app. Close it (or press `Ctrl+C`) to stop.
+You only do steps 1–2 once. After that, starting the app is a single double-click.
+
+**Step 1 — Get this folder onto your computer.**
+If someone sent it to you as a ZIP file: right-click the ZIP → **Extract All...** → **Extract**.
+(Don't skip this — the app won't work from inside the ZIP.) Put the extracted folder
+somewhere easy to find, like your Desktop or Documents.
+
+**Step 2 — Install Python** (free, one time, ~2 minutes):
+1. Go to <https://www.python.org/downloads/> and click the big yellow **Download Python** button.
+2. Open the file it downloads.
+3. ⚠️ **On the very first screen, tick the checkbox that says "Add python.exe to PATH"**
+   (it's at the bottom and easy to miss — this is the one step people get wrong).
+4. Click **Install Now** and wait for "Setup was successful".
+
+**Step 3 — Start the app:** open the folder and **double-click `run.bat`**.
+A black window appears, and a few seconds later your browser opens to the app
+(<http://127.0.0.1:5000>). The first launch takes a little longer while it sets itself up.
+
+- ✅ **Keep the black window open** while you use the app.
+- 🛑 **To stop the app**, just close the black window.
+- 🔁 **To use it again later**, double-click `run.bat` again. Your saved pipeline and
+  grants database will still be there.
+
+### If something goes wrong
+
+| What you see | What it means / what to do |
+|---|---|
+| "Python is not installed yet" in the black window | Do Step 2. If you already did, you likely missed the **"Add python.exe to PATH"** checkbox — re-run the Python installer, choose *Modify*, or uninstall/reinstall with the box ticked. |
+| Browser says "This page can't be reached" | The app is still starting. Wait 5 seconds and click the browser's refresh button. |
+| "The app is ALREADY RUNNING in another window" | You started it twice. Close the new window and use the one that's already open (or just go to http://127.0.0.1:5000). |
+| A Windows "protected your PC" / SmartScreen popup | Click **More info → Run anyway**. It appears because `run.bat` isn't from a software store. |
+| Searches fail or pages show "are you online?" | The app needs internet to look up funders. Check your connection. Saved data still works offline. |
 
 ### Mac / Linux
 

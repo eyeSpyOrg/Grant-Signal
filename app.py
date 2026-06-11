@@ -215,9 +215,30 @@ def pipeline_delete(pid):
     return redirect(url_for("pipeline"))
 
 
+def _already_running():
+    # On Windows, binding an in-use port can silently succeed (SO_REUSEADDR),
+    # so probe the port instead of relying on a bind error.
+    import socket
+    try:
+        with socket.create_connection(("127.0.0.1", 5000), timeout=1):
+            return True
+    except OSError:
+        return False
+
+
 if __name__ == "__main__":
-    print()
-    print("  Eye Spy Grant Scout")
-    print("  Open your browser to:  http://127.0.0.1:5000")
-    print()
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    if _already_running():
+        print()
+        print("  The app is ALREADY RUNNING in another window.")
+        print("  Just open your browser to:  http://127.0.0.1:5000")
+        print("  (Press Enter to close this window.)")
+        try:
+            input()
+        except EOFError:
+            pass
+    else:
+        print()
+        print("  Eye Spy Grant Scout")
+        print("  Open your browser to:  http://127.0.0.1:5000")
+        print()
+        app.run(host="127.0.0.1", port=5000, debug=False)
