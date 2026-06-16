@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Deadlines Calendar — Eye Spy Grant Scout{% endblock %}
+{% block content %}
+<h1>Deadline Calendar</h1>
+
+<div class="calendar-nav">
+    <a href="{{ url_for('deadlines_view', year=prev_year, month=prev_month) }}" class="btn btn-ghost">← Previous</a>
+    <h2>{{ month_name }} {{ year }}</h2>
+    <a href="{{ url_for('deadlines_view', year=next_year, month=next_month) }}" class="btn btn-ghost">Next →</a>
+</div>
+
+<table class="calendar">
+    <thead>
+        <tr>
+            <th>Sun</th>
+            <th>Mon</th>
+            <th>Tue</th>
+            <th>Wed</th>
+            <th>Thu</th>
+            <th>Fri</th>
+            <th>Sat</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for week in cal %}
+        <tr>
+            {% for day in week %}
+            <td class="{% if day == 0 %}other-month{% endif %}">
+                {% if day %}
+                <div class="day-num">{{ day }}</div>
+                {% set date_str = "%04d-%02d-%02d" | format(year, month, day) %}
+                {% if date_str in deadline_map %}
+                {% for d in deadline_map[date_str] %}
+                <div class="deadline-item">
+                    <strong>{{ d.name }}</strong>
+                    <span class="badge status-{{ d.status | replace(' ','.') }}">{{ d.status }}</span>
+                </div>
+                {% endfor %}
+                {% endif %}
+                {% endif %}
+            </td>
+            {% endfor %}
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<div class="grid-2">
+    <div class="card">
+        <h3>Overdue ({{ overdue|length }})</h3>
+        {% if overdue %}
+        <ul>
+            {% for d in overdue %}
+            <li><strong>{{ d.name }}</strong> — <span class="muted">{{ d.deadline }}</span></li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted">None</p>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <h3>Next 7 Days ({{ upcoming|length }})</h3>
+        {% if upcoming %}
+        <ul>
+            {% for d in upcoming %}
+            <li><strong>{{ d.name }}</strong> — <span class="muted">{{ d.deadline }}</span></li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted">No deadlines</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

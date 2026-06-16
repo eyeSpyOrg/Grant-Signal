@@ -6,11 +6,11 @@
 <div class="grid-3">
   <div class="card stat">
     <span class="num">{{ "{:,}".format(stats.grants) }}</span>
-    <span class="lbl">Grants in local database</span>
+    <span class="lbl">Grants in database</span>
   </div>
   <div class="card stat">
     <span class="num">{{ stats.total | money }}</span>
-    <span class="lbl">Total grant dollars tracked</span>
+    <span class="lbl">Total grant dollars</span>
   </div>
   <div class="card stat">
     <span class="num">{{ stats.funders }}</span>
@@ -18,83 +18,107 @@
   </div>
 </div>
 
+<div class="grid-2">
+  <!-- Team Pipeline -->
+  <div class="card">
+    <h2>🌐 Team Pipeline</h2>
+    {% if team_prospects %}
+    <ul>
+      {% for p in team_prospects %}
+      <li>
+        <strong>{{ p.name }}</strong>
+        <span class="badge status-{{ p.status | replace(' ','.') }}">{{ p.status }}</span>
+        {% if p.deadline %}<span class="muted small">{{ p.deadline }}</span>{% endif %}
+        <br><span class="muted small">by {{ p.created_by_username }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    <p><a href="{{ url_for('pipeline_team') }}">View all team prospects →</a></p>
+    {% else %}
+    <p class="muted">Team pipeline is empty. <a href="{{ url_for('pipeline_team') }}">Add prospects</a>.</p>
+    {% endif %}
+  </div>
+
+  <!-- Mini Calendar -->
+  <div class="card">
+    <h2>📅 Calendar</h2>
+    {% if session.get('user_id') %}
+    <table class="mini-calendar">
+      <thead>
+        <tr>
+          <th colspan="7" style="text-align: center; padding: 0.5rem;">
+            <a href="{{ url_for('deadlines_view', year=prev_year, month=prev_month) }}" style="font-size: 0.8rem;">←</a>
+            {{ month_name }} {{ year }}
+            <a href="{{ url_for('deadlines_view', year=next_year, month=next_month) }}" style="font-size: 0.8rem;">→</a>
+          </th>
+        </tr>
+        <tr>
+          <th>S</th>
+          <th>M</th>
+          <th>T</th>
+          <th>W</th>
+          <th>T</th>
+          <th>F</th>
+          <th>S</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for week in cal %}
+        <tr>
+          {% for day in week %}
+          <td class="{% if day == 0 %}other-month{% elif deadline_map.get(" %04d-%02d-%02d"|format(year, month, day))
+            %}has-deadline{% endif %}">
+            {{ day if day else '' }}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="muted small"><a href="{{ url_for('deadlines_view') }}">View full calendar →</a></p>
+    {% else %}
+    <p class="muted"><a href="{{ url_for('login') }}">Log in</a> to see your deadlines.</p>
+    {% endif %}
+  </div>
+</div>
+
 {% if stats.grants == 0 %}
 <div class="card">
   <h2>Get started</h2>
-  <p>Your grants database is empty. Go to the <a href="{{ url_for('indexer_page') }}">Indexer</a> and click
-  <strong>“Index all starter funders”</strong> to pull in the grant histories of {{ seed|length }} Jacksonville-area
-  and vision-focused foundations. It takes a few minutes and only needs to be done once.</p>
+  <p>Your database is empty. Go to the <a href="{{ url_for('indexer_page') }}">Indexer</a> and click <strong>"Index all
+      starter funders"</strong> to pull in grant histories. It takes a few minutes.</p>
   <form method="post" action="{{ url_for('indexer_seed') }}">
     <button class="btn" type="submit">Index all starter funders now</button>
   </form>
 </div>
 {% endif %}
 
-<div class="grid-2">
-  <div class="card">
-    <h2>Vision &amp; blindness related grants <span class="badge badge-vision">{{ vision_total }} found</span></h2>
-    {% if vision_grants %}
-      <ul>
-        {% for g in vision_grants %}
-        <li>
-          <strong>{{ g.recipient_name or "(individual grants)" }}</strong> — {{ g.amount | money }}
-          <span class="muted small">from <a href="{{ url_for('org_profile', ein=g.funder_ein) }}">{{ g.funder_name }}</a>
-          {% if g.tax_year %}({{ g.tax_year }}){% endif %}</span>
-          {% if g.purpose %}<br><span class="small muted">“{{ g.purpose[:120] }}”</span>{% endif %}
-        </li>
-        {% endfor %}
-      </ul>
-      <p><a href="{{ url_for('grants', preset='vision') }}">See all vision-related grants →</a></p>
-    {% else %}
-      <p class="muted">No vision-related grants yet — index some funders first.</p>
-    {% endif %}
-  </div>
-
-  <div class="card">
-    <h2>My pipeline</h2>
-    {% if prospects %}
-      <table>
-        <thead><tr><th scope="col">Funder</th><th scope="col">Status</th><th scope="col">Deadline</th></tr></thead>
-        <tbody>
-        {% for p in prospects %}
-          <tr>
-            <td>{% if p.ein %}<a href="{{ url_for('org_profile', ein=p.ein) }}">{{ p.name }}</a>{% else %}{{ p.name }}{% endif %}</td>
-            <td><span class="badge status-{{ p.status | replace(' ','.') }}">{{ p.status }}</span></td>
-            <td>{{ p.deadline or "—" }}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-      <p><a href="{{ url_for('pipeline') }}">Open full pipeline →</a></p>
-    {% else %}
-      <p class="muted">No prospects saved yet. Find funders and click “Add to pipeline”.</p>
-      <a class="btn" href="{{ url_for('search') }}">Find funders</a>
-    {% endif %}
-  </div>
+{% if vision_grants %}
+<div class="card">
+  <h2>Vision & blindness related grants <span class="badge badge-vision">{{ vision_total }} found</span></h2>
+  <ul>
+    {% for g in vision_grants %}
+    <li>
+      <strong>{{ g.recipient_name or "(individual grants)" }}</strong> — {{ g.amount | money }}
+      <span class="muted small">from <a href="{{ url_for('org_profile', ein=g.funder_ein) }}">{{ g.funder_name }}</a>
+        {% if g.tax_year %}({{ g.tax_year }}){% endif %}</span>
+      {% if g.purpose %}<br><span class="small muted">"{{ g.purpose[:120] }}"</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  <p><a href="{{ url_for('grants', preset='vision') }}">See all vision-related grants →</a></p>
 </div>
+{% endif %}
 
 {% if eyespy %}
 <div class="card">
   <h2>Our organization: {{ eyespy.org.name }}</h2>
-  <p class="muted">EIN {{ eyespy.org.ein | ein_fmt }} · {{ eyespy.org.city }}, {{ eyespy.org.state }}
-     {% if eyespy.org.ntee_code %}· NTEE {{ eyespy.org.ntee_code }}{% endif %}</p>
+  <p class="muted">EIN {{ eyespy.org.ein | ein_fmt }}</p>
   {% if eyespy.history %}
-  <table>
-    <thead><tr><th scope="col">Tax year</th><th scope="col">Form</th>
-      <th scope="col" class="num">Revenue</th><th scope="col" class="num">Expenses</th>
-      <th scope="col" class="num">Assets</th></tr></thead>
-    <tbody>
-      {% for h in eyespy.history %}
-      <tr><td>{{ h.year }}</td><td>{{ h.form }}</td>
-          <td class="num">{{ h.revenue | money }}</td><td class="num">{{ h.expenses | money }}</td>
-          <td class="num">{{ h.assets | money }}</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="muted">No e-filed financial data published yet for Eye Spy (new orgs take 1–2 years to appear in IRS releases).</p>
-  {% endif %}
   <p><a href="{{ url_for('org_profile', ein=eyespy.org.ein) }}">View full profile →</a></p>
+  {% else %}
+  <p class="muted">No e-filed financial data published yet for Eye Spy.</p>
+  {% endif %}
 </div>
 {% endif %}
 {% endblock %}

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Team Pipeline — Eye Spy Grant Scout{% endblock %}
+{% block content %}
+<h1>🌐 Shared Team Pipeline</h1>
+<p class="muted">All prospects your team is tracking together.</p>
+
+{% if rows %}
+{% for p in rows %}
+<div class="card">
+    <h2 style="margin-top:0">
+        {% if p.ein %}<a href="{{ url_for('org_profile', ein=p.ein) }}">{{ p.name }}</a>{% else %}{{ p.name }}{% endif
+        %}
+        <span class="badge status-{{ p.status | replace(' ','.') }}">{{ p.status }}</span>
+        {% if p.deadline %}<span class="badge badge-tag">Due {{ p.deadline }}</span>{% endif %}
+    </h2>
+    <p class="muted small">Added by <strong>{{ p.created_by_username }}</strong></p>
+    <form method="post" action="{{ url_for('pipeline_update', pid=p.id) }}">
+        <div class="form-row">
+            <div>
+                <label for="st-{{ p.id }}">Status</label>
+                <select id="st-{{ p.id }}" name="status">
+                    {% for s in statuses %}<option value="{{ s }}" {% if p.status==s %}selected{% endif %}>{{ s }}
+                    </option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="ask-{{ p.id }}">Ask amount</label>
+                <input type="text" id="ask-{{ p.id }}" name="ask_amount" value="{{ p.ask_amount or '' }}">
+            </div>
+            <div>
+                <label for="dl-{{ p.id }}">Deadline</label>
+                <input type="date" id="dl-{{ p.id }}" name="deadline" value="{{ p.deadline or '' }}">
+            </div>
+            <div class="grow">
+                <label for="ct-{{ p.id }}">Contact</label>
+                <input type="text" id="ct-{{ p.id }}" name="contact" value="{{ p.contact or '' }}">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="grow">
+                <label for="nt-{{ p.id }}">Notes</label>
+                <textarea id="nt-{{ p.id }}" name="notes">{{ p.notes or '' }}</textarea>
+            </div>
+            <div class="shrink">
+                <button class="btn" type="submit">Save</button>
+            </div>
+        </div>
+    </form>
+    <form method="post" action="{{ url_for('pipeline_delete', pid=p.id) }}"
+        onsubmit="return confirm('Remove {{ p.name|e }} from pipeline?')">
+        <button class="btn btn-danger btn-sm" type="submit">Remove</button>
+    </form>
+</div>
+{% endfor %}
+{% else %}
+<p class="muted">Team pipeline is empty. <a href="{{ url_for('pipeline_personal') }}">Add from your personal
+        research</a> to share with the team.</p>
+{% endif %}
+{% endblock %}

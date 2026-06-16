@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}My Grants Research — Eye Spy Grant Scout{% endblock %}
+{% block content %}
+<h1>👤 My Grants Research</h1>
+<p class="muted">Your private research notes. Keep track of grants before sharing with the team.</p>
+
+<form method="get" class="card">
+    <div class="form-row">
+        <div class="grow">
+            <label for="q">Search your notes</label>
+            <input type="text" id="q" name="q" value="{{ q }}" placeholder="Funder name, recipient, or purpose...">
+        </div>
+        <div>
+            <label for="state">State</label>
+            <select id="state" name="state">
+                <option value="">Any</option>
+                {% for s in states %}<option value="{{ s }}" {% if state==s %}selected{% endif %}>{{ s }}</option>{%
+                endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="year">Year</label>
+            <input type="number" id="year" name="year" value="{{ year }}" placeholder="YYYY">
+        </div>
+        <div class="shrink">
+            <button class="btn" type="submit" style="margin-top: 1.5rem;">Search</button>
+        </div>
+    </div>
+</form>
+
+{% if rows %}
+<table>
+    <thead>
+        <tr>
+            <th scope="col">Recipient</th>
+            <th scope="col">Funder</th>
+            <th scope="col">Purpose</th>
+            <th scope="col" class="num">Amount</th>
+            <th scope="col">Year</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for g in rows %}
+        <tr>
+            <td><strong>{{ g.recipient_name or '(individual grants)' }}</strong></td>
+            <td><a href="{{ url_for('org_profile', ein=g.funder_ein) }}">{{ g.funder_name }}</a></td>
+            <td class="small muted">{{ g.purpose[:60] if g.purpose else '—' }}</td>
+            <td class="num">{{ g.amount | money }}</td>
+            <td>{{ g.tax_year or '—' }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="muted">No research notes yet. <a href="{{ url_for('search') }}">Find funders</a> to start researching.</p>
+{% endif %}
+{% endblock %}

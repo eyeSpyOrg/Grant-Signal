@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Team Grants Database — Eye Spy Grant Scout{% endblock %}
+{% block content %}
+<h1>🌐 Team Grants Database</h1>
+<p class="muted">Indexed 990 grants your team has discovered. Visible to everyone.</p>
+
+<form method="get" class="card">
+    <div class="form-row">
+        <div class="grow">
+            <label for="q">Search grants</label>
+            <input type="text" id="q" name="q" value="{{ q }}" placeholder="Funder name, recipient, or purpose...">
+        </div>
+        <div>
+            <label for="state">State</label>
+            <select id="state" name="state">
+                <option value="">Any</option>
+                {% for s in states %}<option value="{{ s }}" {% if state==s %}selected{% endif %}>{{ s }}</option>{%
+                endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="year">Year</label>
+            <input type="number" id="year" name="year" value="{{ year }}" placeholder="YYYY">
+        </div>
+        <div>
+            <label for="min_amount">Min amount</label>
+            <input type="number" id="min_amount" name="min_amount" value="{{ min_amount }}" placeholder="$">
+        </div>
+        <div class="shrink">
+            <button class="btn" type="submit" style="margin-top: 1.5rem;">Search</button>
+        </div>
+    </div>
+</form>
+
+<div class="card stat">
+    <p><strong>{{ "{:,}".format(stats.grants) }}</strong> grants · <strong>{{ stats.total | money }}</strong> total</p>
+</div>
+
+{% if rows %}
+<table>
+    <thead>
+        <tr>
+            <th scope="col">Recipient</th>
+            <th scope="col">Funder</th>
+            <th scope="col">Purpose</th>
+            <th scope="col" class="num">Amount</th>
+            <th scope="col">Year</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for g in rows %}
+        <tr>
+            <td><strong>{{ g.recipient_name or '(individual grants)' }}</strong></td>
+            <td><a href="{{ url_for('org_profile', ein=g.funder_ein) }}">{{ g.funder_name }}</a></td>
+            <td class="small muted">{{ g.purpose[:60] if g.purpose else '—' }}</td>
+            <td class="num">{{ g.amount | money }}</td>
+            <td>{{ g.tax_year or '—' }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="muted">No grants found. Try adjusting your search filters.</p>
+{% endif %}
+{% endblock %}

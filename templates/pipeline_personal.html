@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Shared Pipeline — Eye Spy Grant Scout{% endblock %}
+{% block title %}My Research Pipeline — Eye Spy Grant Scout{% endblock %}
 {% block content %}
-<h1>Shared Grant Pipeline</h1>
-<p class="muted">Team prospects tracked together. All team members see the same pipeline.</p>
+<h1>👤 My Research Pipeline</h1>
+<p class="muted">Your private prospect list. Share items to the team when ready.</p>
 
 <details class="card">
   <summary><strong>+ Add a prospect manually</strong></summary>
@@ -42,7 +42,8 @@
         <label for="np-notes">Notes</label>
         <textarea id="np-notes" name="notes"></textarea>
       </div>
-      <div class="shrink"><button class="btn" type="submit">Add prospect</button></div>
+      <input type="hidden" name="visibility" value="personal">
+      <div class="shrink"><button class="btn" type="submit">Save to my research</button></div>
     </div>
   </form>
 </details>
@@ -60,8 +61,7 @@
       <div>
         <label for="st-{{ p.id }}">Status</label>
         <select id="st-{{ p.id }}" name="status">
-          {% for s in statuses %}<option value="{{ s }}" {% if p.status==s %}selected{% endif %}>{{ s }}</option>{%
-          endfor %}
+          {% for s in statuses %}<option value="{{ s }}" {% if p.status==s %}selected{% endif %}>{{ s }}</option>{% endfor %}
         </select>
       </div>
       <div>
@@ -87,14 +87,18 @@
       </div>
     </div>
   </form>
-  <form method="post" action="{{ url_for('pipeline_delete', pid=p.id) }}"
-    onsubmit="return confirm('Remove {{ p.name|e }} from your pipeline?')">
-    <button class="btn btn-danger btn-sm" type="submit">Remove</button>
-  </form>
+  <div style="margin-top: 1rem; display: flex; gap: 1rem;">
+    <form method="post" action="{{ url_for('pipeline_share_to_team', pid=p.id) }}" style="display:inline;">
+      <button class="btn btn-success btn-sm" type="submit">Share to team →</button>
+    </form>
+    <form method="post" action="{{ url_for('pipeline_delete', pid=p.id) }}"
+          onsubmit="return confirm('Delete {{ p.name|e }}?')" style="display:inline;">
+      <button class="btn btn-danger btn-sm" type="submit">Delete</button>
+    </form>
+  </div>
 </div>
 {% endfor %}
 {% else %}
-<p class="muted">Your pipeline is empty. <a href="{{ url_for('search') }}">Find funders</a> and click “+ Pipeline”,
-  or add one manually above.</p>
+<p class="muted">Your personal pipeline is empty. Add prospects above to start tracking.</p>
 {% endif %}
 {% endblock %}

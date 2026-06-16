@@ -4,8 +4,11 @@ Run:  python app.py   then open http://127.0.0.1:5000
 Data: ProPublica Nonprofit Explorer API (no key) + IRS 990 e-file XML via the
       public GivingTuesday data lake on S3 (no key).
 """
-from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
+import secrets
 
+from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
+from flask import session, redirect
+import auth
 import db
 import indexer
 import propublica
@@ -13,8 +16,9 @@ import seed_funders
 from seed_funders import EYESPY_EIN, EYESPY_NAME, SEED_FUNDERS, is_vision_match
 
 app = Flask(__name__)
-app.secret_key = "eyespy-grant-scout-local"  # local single-user app; not exposed to the internet
+#app.secret_key = "eyespy-grant-scout-local"  # local single-user app; not exposed to the internet
 
+app.secret_key = secrets.token_hex(32) if not __debug__ else "eyespy-grant-scout-dev"
 
 @app.template_filter("money")
 def money(v):
@@ -41,12 +45,26 @@ def inject_globals():
 
 @app.route("/")
 def dashboard():
+    import datetime
+    import calendar as cal_module
+    
     stats = db.grants_stats()
-    counts = db.pipeline_counts()
-    prospects = db.pipeline_all()[:8]
-    # vision-relevant grants in the local database
+    team_prospects = db.pipeline_all_team()[:6]
+    for p in team_prospects:
+        p["created_by_username"] = db.get_username_by_id(p["created_by_user_id"]) if p["created_by_user_id"] else "Unknown"
+    
+    # Mini calendar
+    today = datetime.date.today()
+    year = today.year
+    month = today.month
+    deadlines = db.deadlines_by_month(session.get("user_id"), year, month) if session.get("user_id") else []
+    deadline_map = {d["deadline"][:10]: True for d in deadlines}
+    calendar_grid = cal_module.monthcalendar(year, month)
+    
+    # Vision grants
     vision_grants = [g for g in db.search_grants(limit=5000)
                      if is_vision_match(g["purpose"], g["recipient_name"])]
+    
     eyespy = None
     try:
         data = propublica.get_org(EYESPY_EIN)
@@ -54,13 +72,24 @@ def dashboard():
             eyespy = {"org": data["organization"],
                       "history": propublica.financial_history(data)[:3]}
     except Exception:
-        pass  # offline is fine; dashboard still renders
-    return render_template("dashboard.html", stats=stats, counts=counts,
-                           prospects=prospects, vision_grants=vision_grants[:10],
-                           vision_total=len(vision_grants), eyespy=eyespy,
+        pass
+    
+    return render_template("dashboard.html", 
+                           stats=stats, 
+                           team_prospects=team_prospects,
+                           month_name=cal_module.month_name[month],
+                           year=year, month=month,
+                           cal=calendar_grid, 
+                           deadline_map=deadline_map,
+                           prev_year=year-1 if month==1 else year,
+                           prev_month=(month-2)%12+1 if month==1 else month-1,
+                           next_year=year+1 if month==12 else year,
+                           next_month=(month%12)+1 if month==12 else month+1,
+                           vision_grants=vision_grants[:10],
+                           vision_total=len(vision_grants), 
+                           eyespy=eyespy,
                            seed=SEED_FUNDERS,
                            statuses=db.PIPELINE_STATUSES)
-
 
 # ---------------- Funder search (ProPublica) ----------------
 
@@ -169,30 +198,43 @@ def indexer_status():
 
 # ---------------- Pipeline ----------------
 
+# @app.route("/pipeline")
+# def pipeline():
+#     rows = db.pipeline_all()
+#     return render_template("pipeline.html", rows=rows, statuses=db.PIPELINE_STATUSES)
+
 @app.route("/pipeline")
 def pipeline():
     rows = db.pipeline_all()
+    # Attach username to each row
+    for row in rows:
+        row["created_by_username"] = db.get_username_by_id(row["created_by_user_id"]) if row["created_by_user_id"] else "Unknown"
     return render_template("pipeline.html", rows=rows, statuses=db.PIPELINE_STATUSES)
 
-
-@app.route("/pipeline/add", methods=["POST"])
-def pipeline_add():
-    name = request.form.get("name", "").strip()
-    ein = request.form.get("ein", "").strip().replace("-", "") or None
-    if not name:
-        flash("A funder name is required.")
-        return redirect(request.form.get("next") or url_for("pipeline"))
-    if ein and db.pipeline_has_ein(ein):
-        flash(f"{name} is already in your pipeline.")
-    else:
-        db.pipeline_add(ein, name,
-                        status=request.form.get("status", "Researching"),
-                        ask_amount=request.form.get("ask_amount", ""),
-                        deadline=request.form.get("deadline", ""),
-                        contact=request.form.get("contact", ""),
-                        notes=request.form.get("notes", ""))
-        flash(f"Added {name} to your pipeline.")
-    return redirect(request.form.get("next") or url_for("pipeline"))
+# @app.route("/pipeline/add", methods=["POST"])
+# def pipeline_add():
+#     user_id = session.get("user_id")
+#     if not user_id:
+#         flash("You must be logged in to add to pipeline.")
+#         return redirect(url_for("login"))
+    
+#     name = request.form.get("name", "").strip()
+#     ein = request.form.get("ein", "").strip().replace("-", "") or None
+#     if not name:
+#         flash("A funder name is required.")
+#         return redirect(request.form.get("next") or url_for("pipeline"))
+#     if ein and db.pipeline_has_ein(ein):
+#         flash(f"{name} is already in the shared pipeline.")
+#     else:
+#         db.pipeline_add(ein, name,
+#                         status=request.form.get("status", "Researching"),
+#                         ask_amount=request.form.get("ask_amount", ""),
+#                         deadline=request.form.get("deadline", ""),
+#                         contact=request.form.get("contact", ""),
+#                         notes=request.form.get("notes", ""),
+#                         created_by_user_id=user_id)
+#         flash(f"Added {name} to the shared pipeline.")
+#     return redirect(request.form.get("next") or url_for("pipeline"))
 
 
 @app.route("/pipeline/<int:pid>/update", methods=["POST"])
@@ -214,23 +256,260 @@ def pipeline_delete(pid):
     flash(f"Removed {row['name'] if row else 'prospect'} from pipeline.")
     return redirect(url_for("pipeline"))
 
+# ---------- Pipeline: Team & Personal ----------------
+
+@app.route("/pipeline/team")
+def pipeline_team():
+    """Shared team pipeline (visible to all)."""
+    rows = db.pipeline_all_team()
+    for row in rows:
+        row["created_by_username"] = db.get_username_by_id(row["created_by_user_id"]) if row["created_by_user_id"] else "Unknown"
+    return render_template("pipeline_team.html", rows=rows, statuses=db.PIPELINE_STATUSES)
+
+@app.route("/pipeline/personal")
+def pipeline_personal():
+    """Personal research pipeline (only visible to you)."""
+    user_id = session.get("user_id")
+    if not user_id:
+        return redirect(url_for("login"))
+    rows = db.pipeline_all_personal(user_id)
+    return render_template("pipeline_personal.html", rows=rows, statuses=db.PIPELINE_STATUSES)
+
+@app.route("/pipeline/add", methods=["POST"])
+def pipeline_add():
+    user_id = session.get("user_id")
+    if not user_id:
+        flash("You must be logged in.")
+        return redirect(url_for("login"))
+    
+    name = request.form.get("name", "").strip()
+    ein = request.form.get("ein", "").strip().replace("-", "") or None
+    visibility = request.form.get("visibility", "personal")  # personal or team
+    
+    if not name:
+        flash("A funder name is required.")
+        return redirect(request.form.get("next") or url_for("pipeline_personal"))
+    
+    pid = db.pipeline_add(ein, name,
+                    status=request.form.get("status", "Researching"),
+                    ask_amount=request.form.get("ask_amount", ""),
+                    deadline=request.form.get("deadline", ""),
+                    contact=request.form.get("contact", ""),
+                    notes=request.form.get("notes", ""),
+                    created_by_user_id=user_id)
+    
+    # Set visibility
+    db.get_db().execute("UPDATE pipeline SET visibility=? WHERE id=?", (visibility, pid))
+    db.get_db().commit()
+    
+    flash(f"Added {name} to your {visibility} pipeline.")
+    return redirect(request.form.get("next") or url_for("pipeline_" + visibility))
+
+@app.route("/pipeline/<int:pid>/share-to-team", methods=["POST"])
+def pipeline_share_to_team(pid):
+    """Move prospect from personal to team."""
+    user_id = session.get("user_id")
+    if not user_id:
+        return redirect(url_for("login"))
+    
+    row = db.pipeline_get(pid)
+    if not row or row["created_by_user_id"] != user_id:
+        flash("You can only share your own items.")
+        return redirect(url_for("pipeline_personal"))
+    
+    db.pipeline_share_to_team(pid)
+    flash(f"'{row['name']}' shared with the team!")
+    return redirect(url_for("pipeline_personal"))
+
+
 
 def _already_running():
     # On Windows, binding an in-use port can silently succeed (SO_REUSEADDR),
     # so probe the port instead of relying on a bind error.
     import socket
     try:
-        with socket.create_connection(("127.0.0.1", 5000), timeout=1):
+        with socket.create_connection(("127.0.0.1", 5001), timeout=1):
             return True
     except OSError:
         return False
+
+# ---------- Authentication ----------------
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        email = request.form.get("email", "").strip()
+        password = request.form.get("password", "").strip()
+        if not all([username, email, password]):
+            flash("All fields required.")
+            return redirect(url_for("register"))
+        uid = db.create_user(username, email, password)
+        if uid:
+            session["user_id"] = uid
+            session["username"] = username
+            flash(f"Welcome, {username}!")
+            return redirect(url_for("dashboard"))
+        else:
+            flash("Username or email already exists.")
+    return render_template("register.html")
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "").strip()
+        user = db.get_user_by_username(username)
+        if user and db.verify_password(user["password_hash"], password):
+            session["user_id"] = user["id"]
+            session["username"] = user["username"]
+            flash(f"Welcome back, {username}!")
+            return redirect(url_for("dashboard"))
+        flash("Invalid username or password.")
+    return render_template("login.html")
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    flash("Logged out.")
+    return redirect(url_for("login"))
+
+@app.route("/api/token")
+@auth.require_auth
+def get_api_token():
+    """Get API token for current user."""
+    user_id = session.get("user_id") or request.user["id"]
+    token = db.create_api_token(user_id)
+    return jsonify({"token": token, "usage": "Add to requests: Authorization: Bearer " + token})
+
+
+# ---------- Calendar & Deadlines ----------------
+
+@app.route("/deadlines")
+@auth.require_auth
+def deadlines_view():
+    """Calendar view of upcoming deadlines."""
+    import datetime
+    user_id = session.get("user_id")
+    
+    year = request.args.get("year", type=int)
+    month = request.args.get("month", type=int)
+    today = datetime.date.today()
+    
+    if not year:
+        year = today.year
+    if not month:
+        month = today.month
+    
+    deadlines = db.deadlines_by_month(user_id, year, month)
+    upcoming = db.deadlines_upcoming(user_id, days_ahead=7)
+    overdue = db.deadlines_overdue(user_id)
+    
+    # Build calendar grid
+    import calendar
+    cal = calendar.monthcalendar(year, month)
+    deadline_map = {d["deadline"][:10]: d for d in deadlines}  # YYYY-MM-DD
+    
+    prev_month = (month - 2) % 12 + 1
+    prev_year = year - 1 if month == 1 else year
+    next_month = month % 12 + 1
+    next_year = year + 1 if month == 12 else year
+    
+    return render_template("deadlines.html", 
+                           year=year, month=month, 
+                           month_name=calendar.month_name[month],
+                           cal=cal, deadline_map=deadline_map,
+                           upcoming=upcoming, overdue=overdue,
+                           prev_year=prev_year, prev_month=prev_month,
+                           next_year=next_year, next_month=next_month)
+
+
+# ---------- REST API Endpoints ----------------
+
+@app.route("/api/pipeline", methods=["GET", "POST"])
+@auth.require_api_token
+def api_pipeline():
+    """Get or create pipeline entries via API."""
+    user_id = request.user["id"]
+    
+    if request.method == "GET":
+        rows = db.get_db().execute(
+            "SELECT * FROM pipeline WHERE user_id=? ORDER BY deadline ASC, updated_at DESC",
+            (user_id,)).fetchall()
+        return jsonify([dict(r) for r in rows])
+    
+    data = request.get_json()
+    pid = db.pipeline_add(
+        ein=data.get("ein"),
+        name=data.get("name"),
+        status=data.get("status", "Researching"),
+        ask_amount=data.get("ask_amount", ""),
+        deadline=data.get("deadline", ""),
+        contact=data.get("contact", ""),
+        notes=data.get("notes", "")
+    )
+    db.get_db().execute("UPDATE pipeline SET user_id=? WHERE id=?", (user_id, pid))
+    db.get_db().commit()
+    return jsonify({"id": pid}), 201
+
+@app.route("/api/pipeline/<int:pid>", methods=["GET", "PUT", "DELETE"])
+@auth.require_api_token
+def api_pipeline_item(pid):
+    """Get, update, or delete a specific pipeline entry."""
+    user_id = request.user["id"]
+    row = db.pipeline_get(pid)
+    
+    if not row or row["user_id"] != user_id:
+        return jsonify({"error": "Not found"}), 404
+    
+    if request.method == "GET":
+        return jsonify(dict(row))
+    
+    if request.method == "PUT":
+        data = request.get_json()
+        db.pipeline_update(pid, **data)
+        return jsonify({"success": True})
+    
+    if request.method == "DELETE":
+        db.pipeline_delete(pid)
+        return jsonify({"success": True})
+
+@app.route("/api/grants", methods=["GET"])
+@auth.require_api_token
+def api_grants():
+    """Search grants via API."""
+    q = request.args.get("q")
+    state = request.args.get("state")
+    min_amount = request.args.get("min_amount", type=int)
+    max_amount = request.args.get("max_amount", type=int)
+    year = request.args.get("year", type=int)
+    
+    rows = db.search_grants(q=q, state=state, min_amount=min_amount, 
+                            max_amount=max_amount, year=year, limit=300)
+    return jsonify([dict(r) for r in rows])
+
+@app.route("/api/deadlines", methods=["GET"])
+@auth.require_api_token
+def api_deadlines():
+    """Get upcoming deadlines via API."""
+    user_id = request.user["id"]
+    days = request.args.get("days_ahead", default=30, type=int)
+    
+    upcoming = db.deadlines_upcoming(user_id, days_ahead=days)
+    overdue = db.deadlines_overdue(user_id)
+    
+    return jsonify({
+        "upcoming": [dict(d) for d in upcoming],
+        "overdue": [dict(d) for d in overdue]
+    })
+
 
 
 if __name__ == "__main__":
     if _already_running():
         print()
         print("  The app is ALREADY RUNNING in another window.")
-        print("  Just open your browser to:  http://127.0.0.1:5000")
+        print("  Just open your browser to:  http://127.0.0.1:5001")
         print("  (Press Enter to close this window.)")
         try:
             input()
@@ -239,6 +518,6 @@ if __name__ == "__main__":
     else:
         print()
         print("  Eye Spy Grant Scout")
-        print("  Open your browser to:  http://127.0.0.1:5000")
+        print("  Open your browser to:  http://127.0.0.1:5001")
         print()
-        app.run(host="127.0.0.1", port=5000, debug=False)
+        app.run(host="127.0.0.1", port=5001, debug=False)
