@@ -12,55 +12,63 @@ our own version of Candid / Instrumentl, built entirely on **public IRS Form 990
 - **Accessible UI** — high contrast, large-text toggle, keyboard- and screen-reader-friendly (built for a
   blind/low-vision organization).
 
-**No API keys, no accounts, no cost.** Data comes from the ProPublica Nonprofit Explorer API and the public
-IRS 990 e-file XML release (mirrored on S3 by the GivingTuesday Data Lake). Everything you save stays on
-your own computer in a local database file.
+**No API keys, no cost.** Data comes from the ProPublica Nonprofit Explorer API and the public
+IRS 990 e-file XML release (mirrored on S3 by the GivingTuesday Data Lake).
 
 ---
 
-## Setup for the Eye Spy team (Windows — no technical experience needed)
+## Use the website (no setup needed)
 
-You only do steps 1–2 once. After that, starting the app is a single double-click.
+The app is hosted and shared by the whole team at:
 
-**Step 1 — Get this folder onto your computer.**
-If someone sent it to you as a ZIP file: right-click the ZIP → **Extract All...** → **Extract**.
-(Don't skip this — the app won't work from inside the ZIP.) Put the extracted folder
-somewhere easy to find, like your Desktop or Documents.
+**👉 <https://eyespy-grant-scout.onrender.com>**
 
-**Step 2 — Install Python** (free, one time, ~2 minutes):
-1. Go to <https://www.python.org/downloads/> and click the big yellow **Download Python** button.
-2. Open the file it downloads.
-3. ⚠️ **On the very first screen, tick the checkbox that says "Add python.exe to PATH"**
-   (it's at the bottom and easy to miss — this is the one step people get wrong).
-4. Click **Install Now** and wait for "Setup was successful".
+Just open that link, click **Register** (top right) to create your account, and log in. Your personal
+pipeline is private to you; the Team Pipeline and Grants Database are shared with everyone on the team.
 
-**Step 3 — Start the app:** open the folder and **double-click `run.bat`**.
-A black window appears, and a few seconds later your browser opens to the app
-(<http://127.0.0.1:5000>). The first launch takes a little longer while it sets itself up.
+> Note: the site is on Render's free tier, so it may take ~30–50 seconds to wake up if no one has visited
+> recently — that's normal, just wait for the first page to load.
 
-- ✅ **Keep the black window open** while you use the app.
-- 🛑 **To stop the app**, just close the black window.
-- 🔁 **To use it again later**, double-click `run.bat` again. Your saved pipeline and
-  grants database will still be there.
+---
+
+## Running it locally (for development)
+
+This app now stores its data in Postgres, not a local file, so running it locally requires a
+`DATABASE_URL` pointing at a Postgres database (a local Postgres install, or the connection string
+from the Render dashboard). `run.bat` and `python app.py` will fail immediately without it.
+
+**Step 1 — Get this folder onto your computer** (clone the repo, or extract the ZIP).
+
+**Step 2 — Install Python 3.11+** from <https://www.python.org/downloads/> (on Windows, tick
+**"Add python.exe to PATH"** during install).
+
+**Step 3 — Set `DATABASE_URL`** to a Postgres connection string, e.g.:
+
+```bash
+export DATABASE_URL="postgresql://user:password@localhost:5432/eyespy_dev"
+```
+
+(On Windows: `set DATABASE_URL=postgresql://...` before running `run.bat`, or add it as a
+system environment variable.)
+
+**Step 4 — Install dependencies and start the app:**
+
+```bash
+pip install -r requirements.txt
+python app.py
+# then open http://127.0.0.1:5001
+```
+
+On Windows you can still double-click `run.bat` once `DATABASE_URL` is set in your environment.
 
 ### If something goes wrong
 
 | What you see | What it means / what to do |
 |---|---|
-| "Python is not installed yet" in the black window | Do Step 2. If you already did, you likely missed the **"Add python.exe to PATH"** checkbox — re-run the Python installer, choose *Modify*, or uninstall/reinstall with the box ticked. |
-| Browser says "This page can't be reached" | The app is still starting. Wait 5 seconds and click the browser's refresh button. |
-| "The app is ALREADY RUNNING in another window" | You started it twice. Close the new window and use the one that's already open (or just go to http://127.0.0.1:5000). |
-| A Windows "protected your PC" / SmartScreen popup | Click **More info → Run anyway**. It appears because `run.bat` isn't from a software store. |
-| Searches fail or pages show "are you online?" | The app needs internet to look up funders. Check your connection. Saved data still works offline. |
-
-### Mac / Linux
-
-```bash
-cd Candid_dupe_EyeSpy
-pip3 install -r requirements.txt
-python3 app.py
-# then open http://127.0.0.1:5000
-```
+| `RuntimeError: DATABASE_URL is not set` | Set the `DATABASE_URL` environment variable (Step 3) before starting the app. |
+| Browser says "This page can't be reached" | The app is still starting. Wait 5 seconds and refresh. |
+| "The app is ALREADY RUNNING in another window" | You started it twice. Close the new window and use the one already open. |
+| Searches fail or pages show "are you online?" | The app needs internet to look up funders. Check your connection. |
 
 ### First run — load the starter data
 
@@ -90,9 +98,8 @@ needs to be done once. After that, index any other funder you're curious about w
 | Org search, profiles, financial history | [ProPublica Nonprofit Explorer API](https://projects.propublica.org/nonprofits/api) | No |
 | Itemized grants, key people | IRS Form 990 e-file XML via the public [GivingTuesday 990 Data Lake](https://gt990datalake-rawdata.s3.amazonaws.com) (S3) | No |
 
-The app fetches data on demand and caches it in `data/grantscout.db` (SQLite). Your pipeline lives in the
-same file — **back it up** if your prospect list matters, and don't commit it to a shared repo if your
-notes are sensitive.
+The app fetches data on demand and caches it in Postgres. The Grants Database and Team Pipeline are
+shared across everyone who logs in; each person's "My Pipeline" is private to their account.
 
 ## Known limitations (vs. paid tools like Candid / Instrumentl)
 
@@ -115,12 +122,13 @@ notes are sensitive.
 
 ```
 app.py            Flask web app (routes/pages)
-db.py             SQLite storage (caches, grants, pipeline)
+auth.py           Login/session/API-token decorators
+db.py             Postgres storage (caches, grants, pipeline)
 propublica.py     ProPublica API client
 xml990.py         IRS 990 XML download + grant/people parser
 indexer.py        Background indexing worker
 seed_funders.py   Curated starter funder list (verified EINs)
 templates/        HTML pages    static/  CSS + JS
-data/             Local database (created on first run)
-run.bat           One-click Windows launcher
+render.yaml       Render deploy config (web service + Postgres)
+run.bat           One-click Windows launcher (needs DATABASE_URL set)
 ```

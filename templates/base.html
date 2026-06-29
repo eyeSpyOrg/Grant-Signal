@@ -43,16 +43,20 @@
 
       <div class="sidebar-footer">
         <button id="font-toggle" class="btn btn-ghost" type="button" aria-pressed="false" title="Toggle large text">A<span class="big-a">A</span></button>
-        {% if session.get('user_id') %}
-          <form method="post" action="{{ url_for('logout') }}"><button type="submit" class="btn btn-text">Logout ({{ session.get('username') }})</button></form>
-        {% else %}
-          <a href="{{ url_for('login') }}" class="btn btn-ghost btn-sm">Login</a>
-          <a href="{{ url_for('register') }}" class="btn btn-sm">Register</a>
-        {% endif %}
       </div>
     </aside>
 
     <div class="main-col">
+      <header class="topbar">
+        {% if session.get('user_id') %}
+          <span class="topbar-user">{{ session.get('username') }}</span>
+          <form method="post" action="{{ url_for('logout') }}"><button type="submit" class="btn btn-text">Logout</button></form>
+        {% else %}
+          <a href="{{ url_for('login') }}" class="btn btn-ghost btn-sm">Login</a>
+          <a href="{{ url_for('register') }}" class="btn btn-sm">Register</a>
+        {% endif %}
+      </header>
+
       <main id="main" class="wrap">
         {% with messages = get_flashed_messages() %}
         {% if messages %}
