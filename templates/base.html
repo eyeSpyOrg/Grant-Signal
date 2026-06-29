@@ -10,52 +10,69 @@
 
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
-  <header class="site-header">
-    <div class="wrap header-row">
+  <div class="app-shell">
+    <aside class="sidebar">
       <a class="brand" href="{{ url_for('dashboard') }}">
         <span class="brand-mark" aria-hidden="true">◉</span>
         <span>Eye&nbsp;Spy <strong>Grant&nbsp;Scout</strong></span>
       </a>
-          <nav aria-label="Main navigation">
-      <ul class="nav">
-        <li><a href="{{ url_for('dashboard') }}" {% if request.endpoint=='dashboard' %}aria-current="page"{% endif %}>Dashboard</a></li>
-        <li><a href="{{ url_for('search') }}" {% if request.endpoint=='search' %}aria-current="page"{% endif %}>Find Funders</a></li>
-        <li><a href="{{ url_for('grants') }}" {% if request.endpoint=='grants' %}aria-current="page"{% endif %}>Grants Database</a></li>
-        <li><a href="{{ url_for('pipeline_team') }}" {% if request.endpoint=='pipeline_team' %}aria-current="page"{% endif %}>🌐 Team Pipeline</a></li>
+
+      <nav class="sidebar-nav" aria-label="Main navigation">
+        <ul class="sidebar-group">
+          <li><a class="sidebar-link" href="{{ url_for('dashboard') }}" {% if request.endpoint=='dashboard' %}aria-current="page"{% endif %}><span class="icon" aria-hidden="true">⌂</span>Dashboard</a></li>
+          <li><a class="sidebar-link" href="{{ url_for('search') }}" {% if request.endpoint=='search' %}aria-current="page"{% endif %}><span class="icon" aria-hidden="true">⌕</span>Find Funders</a></li>
+          <li><a class="sidebar-link" href="{{ url_for('grants') }}" {% if request.endpoint=='grants' %}aria-current="page"{% endif %}><span class="icon" aria-hidden="true">$</span>Grants Database</a></li>
+        </ul>
+
+        <p class="sidebar-group-label">Pipeline</p>
+        <ul class="sidebar-group">
+          <li><a class="sidebar-link" href="{{ url_for('pipeline_team') }}" {% if request.endpoint=='pipeline_team' %}aria-current="page"{% endif %}><span class="icon" aria-hidden="true">🌐</span>Team Pipeline</a></li>
+          {% if session.get('user_id') %}
+          <li><a class="sidebar-link" href="{{ url_for('pipeline_personal') }}" {% if request.endpoint=='pipeline_personal' %}aria-current="page"{% endif %}><span class="icon" aria-hidden="true">👤</span>My Pipeline</a></li>
+          {% endif %}
+        </ul>
+
         {% if session.get('user_id') %}
-          <li><a href="{{ url_for('pipeline_personal') }}" {% if request.endpoint=='pipeline_personal' %}aria-current="page"{% endif %}>👤 My Pipeline</a></li>
-          <li><a href="{{ url_for('indexer_page') }}" {% if request.endpoint=='indexer_page' %}aria-current="page"{% endif %}>Indexer</a></li>
-          <li><a href="{{ url_for('deadlines_view') }}">📅 Deadlines</a></li>
-          <li><form method="post" action="{{ url_for('logout') }}" style="display:inline;"><button type="submit" class="btn btn-text">Logout ({{ session.get('username') }})</button></form></li>
-        {% else %}
-          <li><a href="{{ url_for('login') }}" class="btn btn-ghost">Login</a></li>
-          <li><a href="{{ url_for('register') }}" class="btn">Register</a></li>
+        <p class="sidebar-group-label">Tools</p>
+        <ul class="sidebar-group">
+          <li><a class="sidebar-link" href="{{ url_for('indexer_page') }}" {% if request.endpoint=='indexer_page' %}aria-current="page"{% endif %}><span class="icon" aria-hidden="true">⇩</span>Indexer</a></li>
+          <li><a class="sidebar-link" href="{{ url_for('deadlines_view') }}" {% if request.endpoint=='deadlines_view' %}aria-current="page"{% endif %}><span class="icon" aria-hidden="true">📅</span>Deadlines</a></li>
+        </ul>
         {% endif %}
-      </ul>
-    </nav>
-      <button id="font-toggle" class="btn btn-ghost" type="button" aria-pressed="false" title="Toggle large text">A<span
-          class="big-a">A</span></button>
-    </div>
-  </header>
+      </nav>
 
-  <main id="main" class="wrap">
-    {% with messages = get_flashed_messages() %}
-    {% if messages %}
-    <div class="flash" role="status" aria-live="polite">
-      {% for m in messages %}<p>{{ m }}</p>{% endfor %}
-    </div>
-    {% endif %}
-    {% endwith %}
-    {% block content %}{% endblock %}
-  </main>
+      <div class="sidebar-footer">
+        <button id="font-toggle" class="btn btn-ghost" type="button" aria-pressed="false" title="Toggle large text">A<span class="big-a">A</span></button>
+        {% if session.get('user_id') %}
+          <form method="post" action="{{ url_for('logout') }}"><button type="submit" class="btn btn-text">Logout ({{ session.get('username') }})</button></form>
+        {% else %}
+          <a href="{{ url_for('login') }}" class="btn btn-ghost btn-sm">Login</a>
+          <a href="{{ url_for('register') }}" class="btn btn-sm">Register</a>
+        {% endif %}
+      </div>
+    </aside>
 
-  <footer class="site-footer">
-    <div class="wrap">
-      <p>Data: <a href="https://projects.propublica.org/nonprofits/">ProPublica Nonprofit Explorer</a>
-        and IRS Form 990 e-file XML (public domain). Free for nonprofit research use.
-        990 data typically lags 1–2 years behind the current date.</p>
+    <div class="main-col">
+      <main id="main" class="wrap">
+        {% with messages = get_flashed_messages() %}
+        {% if messages %}
+        <div class="flash" role="status" aria-live="polite">
+          {% for m in messages %}<p>{{ m }}</p>{% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+      </main>
+
+      <footer class="site-footer">
+        <div class="wrap">
+          <p>Data: <a href="https://projects.propublica.org/nonprofits/">ProPublica Nonprofit Explorer</a>
+            and IRS Form 990 e-file XML (public domain). Free for nonprofit research use.
+            990 data typically lags 1–2 years behind the current date.</p>
+        </div>
+      </footer>
     </div>
-  </footer>
+  </div>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 

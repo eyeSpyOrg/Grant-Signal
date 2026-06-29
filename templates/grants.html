@@ -26,11 +26,36 @@
       <label for="min_amount">Min amount ($)</label>
       <input type="number" id="min_amount" name="min_amount" value="{{ min_amount }}" min="0" placeholder="any">
     </div>
+    <div>
+      <label for="max_amount">Max amount ($)</label>
+      <input type="number" id="max_amount" name="max_amount" value="{{ max_amount }}" min="0" placeholder="any">
+    </div>
+  </div>
+  <div class="form-row">
+    <div class="grow">
+      <label for="funder_ein">Funder</label>
+      <select id="funder_ein" name="funder_ein">
+        <option value="">All funders</option>
+        {% for f in funders %}
+        <option value="{{ f.funder_ein }}" {% if funder_ein==f.funder_ein %}selected{% endif %}>{{ f.funder_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="sort">Sort by</label>
+      <select id="sort" name="sort">
+        <option value="amount_desc" {% if sort=='amount_desc' %}selected{% endif %}>Largest amount first</option>
+        <option value="amount_asc" {% if sort=='amount_asc' %}selected{% endif %}>Smallest amount first</option>
+        <option value="year_desc" {% if sort=='year_desc' %}selected{% endif %}>Most recent tax year</option>
+        <option value="recent" {% if sort=='recent' %}selected{% endif %}>Recently added</option>
+      </select>
+    </div>
     <div class="shrink"><button class="btn" type="submit">Search</button></div>
   </div>
   <div class="toolbar small">
     <span class="muted">Presets:</span>
     <a href="{{ url_for('grants', preset='vision') }}">Vision &amp; blindness grants</a> ·
+    <a href="{{ url_for('grants', preset='recent') }}">Most recently added</a> ·
     <a href="{{ url_for('grants', q='Jacksonville') }}">Jacksonville recipients</a> ·
     <a href="{{ url_for('grants', state='FL') }}">All Florida recipients</a> ·
     <a href="{{ url_for('grants', q='disab') }}">Disability</a>
@@ -40,29 +65,24 @@
 {% if preset == 'vision' %}<p><span class="badge badge-vision">Showing vision &amp; blindness related grants</span></p>{% endif %}
 
 {% if rows %}
-<p aria-live="polite">{{ rows|length }} grant(s) shown (largest first).</p>
-<div class="table-scroll">
-<table>
-  <thead><tr>
-    <th scope="col">Funder</th><th scope="col">Year</th><th scope="col">Recipient</th>
-    <th scope="col">Location</th><th scope="col">Purpose</th><th scope="col" class="num">Amount</th>
-  </tr></thead>
-  <tbody>
-    {% for g in rows %}
-    <tr>
-      <td><a href="{{ url_for('org_profile', ein=g.funder_ein) }}">{{ g.funder_name or g.funder_ein }}</a></td>
-      <td>{{ g.tax_year or "—" }}{% if g.is_future %} <span class="badge badge-tag">future</span>{% endif %}</td>
-      <td>{{ g.recipient_name or "—" }}
-        {% if vision_match(g.purpose, g.recipient_name) %}<span class="badge badge-vision">vision</span>{% endif %}</td>
-      <td>{% if g.city %}{{ g.city }}, {% endif %}{{ g.state or "" }}</td>
-      <td class="small">{{ g.purpose or "—" }}</td>
-      <td class="num">{{ g.amount | money }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<p aria-live="polite">{{ rows|length }} grant(s) shown.</p>
+<div class="card-grid">
+  {% for g in rows %}
+  <div class="grant-card">
+    <a class="funder" href="{{ url_for('org_profile', ein=g.funder_ein) }}">{{ g.funder_name or g.funder_ein }}</a>
+    <span class="amount">{{ g.amount | money }}</span>
+    <span class="meta">
+      {{ g.recipient_name or "—" }}
+      {% if vision_match(g.purpose, g.recipient_name) %}<span class="badge badge-vision">vision</span>{% endif %}
+      {% if g.city %} · {{ g.city }}, {% endif %}{% if g.state %}{{ g.state }}{% endif %}
+      {% if g.tax_year %} · {{ g.tax_year }}{% endif %}
+      {% if g.is_future %} <span class="badge badge-tag">future</span>{% endif %}
+    </span>
+    {% if g.purpose %}<span class="purpose small">"{{ g.purpose }}"</span>{% endif %}
+  </div>
+  {% endfor %}
 </div>
-{% elif q or state or year or preset %}
+{% elif q or state or year or preset or funder_ein %}
 <p class="muted">No grants matched. Try a broader keyword, or index more funders first.</p>
 {% else %}
 <p class="muted">Enter a keyword above, or use a preset. Tip: search the names of organizations similar to Eye Spy

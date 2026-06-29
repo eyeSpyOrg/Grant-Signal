@@ -4,7 +4,7 @@ Run:  python app.py   then open http://127.0.0.1:5000
 Data: ProPublica Nonprofit Explorer API (no key) + IRS 990 e-file XML via the
       public GivingTuesday data lake on S3 (no key).
 """
-import secrets
+import os
 
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
 from flask import session, redirect
@@ -16,9 +16,7 @@ import seed_funders
 from seed_funders import EYESPY_EIN, EYESPY_NAME, SEED_FUNDERS, is_vision_match
 
 app = Flask(__name__)
-#app.secret_key = "eyespy-grant-scout-local"  # local single-user app; not exposed to the internet
-
-app.secret_key = secrets.token_hex(32) if not __debug__ else "eyespy-grant-scout-dev"
+app.secret_key = os.environ.get("SECRET_KEY", "eyespy-grant-scout-dev")
 
 @app.template_filter("money")
 def money(v):
@@ -49,7 +47,7 @@ def dashboard():
     import calendar as cal_module
     
     stats = db.grants_stats()
-    team_prospects = db.pipeline_all_team()[:6]
+    team_prospects = [dict(p) for p in db.pipeline_all_team()[:6]]
     for p in team_prospects:
         p["created_by_username"] = db.get_username_by_id(p["created_by_user_id"]) if p["created_by_user_id"] else "Unknown"
     
@@ -64,7 +62,24 @@ def dashboard():
     # Vision grants
     vision_grants = [g for g in db.search_grants(limit=5000)
                      if is_vision_match(g["purpose"], g["recipient_name"])]
-    
+
+    # Grants-by-year bar chart (pure CSS bars, scaled relative to the busiest year)
+    by_year = db.grants_by_year()
+    max_year_n = max((y["n"] for y in by_year), default=0)
+    for y in by_year:
+        y["pct"] = round(100 * y["n"] / max_year_n) if max_year_n else 0
+
+    avg_grant = (stats["total"] / stats["grants"]) if stats["grants"] else 0
+
+    # Pipeline funnel summary (Active Drafts / Requested / Submitted / In Pipeline / Next Deadline)
+    funnel = db.pipeline_funnel_stats()
+    if funnel["next_deadline"]:
+        try:
+            d = datetime.datetime.strptime(funnel["next_deadline"]["deadline"][:10], "%Y-%m-%d").date()
+            funnel["next_deadline"]["deadline_fmt"] = "{} {}, {}".format(d.strftime("%b"), d.day, d.year)
+        except ValueError:
+            funnel["next_deadline"]["deadline_fmt"] = funnel["next_deadline"]["deadline"]
+
     eyespy = None
     try:
         data = propublica.get_org(EYESPY_EIN)
@@ -86,7 +101,10 @@ def dashboard():
                            next_year=year+1 if month==12 else year,
                            next_month=(month%12)+1 if month==12 else month+1,
                            vision_grants=vision_grants[:10],
-                           vision_total=len(vision_grants), 
+                           vision_total=len(vision_grants),
+                           by_year=by_year,
+                           avg_grant=avg_grant,
+                           funnel=funnel,
                            eyespy=eyespy,
                            seed=SEED_FUNDERS,
                            statuses=db.PIPELINE_STATUSES)
@@ -148,19 +166,29 @@ def grants():
     state = request.args.get("state", "").strip()
     year = request.args.get("year", "").strip()
     min_amount = request.args.get("min_amount", "").strip()
+    max_amount = request.args.get("max_amount", "").strip()
+    funder_ein = request.args.get("funder_ein", "").strip()
+    sort = request.args.get("sort", "amount_desc").strip()
     preset = request.args.get("preset", "")
+    if preset == "recent":
+        sort = "recent"
     year_n = int(year) if year.isdigit() else None
     min_n = int(min_amount) if min_amount.isdigit() else None
+    max_n = int(max_amount) if max_amount.isdigit() else None
+    if sort not in db.GRANT_SORTS:
+        sort = "amount_desc"
     if preset == "vision" and not q:
-        rows = [g for g in db.search_grants(state=state or None, year=year_n, limit=5000)
+        rows = [g for g in db.search_grants(state=state or None, year=year_n, sort=sort, limit=5000)
                 if is_vision_match(g["purpose"], g["recipient_name"])][:300]
     else:
-        rows = db.search_grants(q=q or None, state=state or None,
-                                year=year_n, min_amount=min_n, limit=300)
+        rows = db.search_grants(q=q or None, state=state or None, year=year_n,
+                                min_amount=min_n, max_amount=max_n,
+                                funder_ein=funder_ein or None, sort=sort, limit=300)
     stats = db.grants_stats()
     return render_template("grants.html", rows=rows, q=q, state=state, year=year,
-                           min_amount=min_amount, preset=preset, stats=stats,
-                           states=propublica.US_STATES)
+                           min_amount=min_amount, max_amount=max_amount, funder_ein=funder_ein,
+                           sort=sort, preset=preset, stats=stats,
+                           states=propublica.US_STATES, funders=db.funders_list())
 
 
 # ---------------- Indexer ----------------
@@ -207,6 +235,7 @@ def indexer_status():
 def pipeline():
     rows = db.pipeline_all()
     # Attach username to each row
+    rows = [dict(row) for row in rows]
     for row in rows:
         row["created_by_username"] = db.get_username_by_id(row["created_by_user_id"]) if row["created_by_user_id"] else "Unknown"
     return render_template("pipeline.html", rows=rows, statuses=db.PIPELINE_STATUSES)
@@ -262,6 +291,7 @@ def pipeline_delete(pid):
 def pipeline_team():
     """Shared team pipeline (visible to all)."""
     rows = db.pipeline_all_team()
+    rows = [dict(row) for row in rows]
     for row in rows:
         row["created_by_username"] = db.get_username_by_id(row["created_by_user_id"]) if row["created_by_user_id"] else "Unknown"
     return render_template("pipeline_team.html", rows=rows, statuses=db.PIPELINE_STATUSES)
@@ -299,7 +329,7 @@ def pipeline_add():
                     created_by_user_id=user_id)
     
     # Set visibility
-    db.get_db().execute("UPDATE pipeline SET visibility=? WHERE id=?", (visibility, pid))
+    db.get_db().execute("UPDATE pipeline SET visibility=%s WHERE id=%s", (visibility, pid))
     db.get_db().commit()
     
     flash(f"Added {name} to your {visibility} pipeline.")
@@ -434,10 +464,10 @@ def api_pipeline():
     
     if request.method == "GET":
         rows = db.get_db().execute(
-            "SELECT * FROM pipeline WHERE user_id=? ORDER BY deadline ASC, updated_at DESC",
+            "SELECT * FROM pipeline WHERE created_by_user_id=%s ORDER BY deadline ASC, updated_at DESC",
             (user_id,)).fetchall()
         return jsonify([dict(r) for r in rows])
-    
+
     data = request.get_json()
     pid = db.pipeline_add(
         ein=data.get("ein"),
@@ -446,10 +476,9 @@ def api_pipeline():
         ask_amount=data.get("ask_amount", ""),
         deadline=data.get("deadline", ""),
         contact=data.get("contact", ""),
-        notes=data.get("notes", "")
+        notes=data.get("notes", ""),
+        created_by_user_id=user_id
     )
-    db.get_db().execute("UPDATE pipeline SET user_id=? WHERE id=?", (user_id, pid))
-    db.get_db().commit()
     return jsonify({"id": pid}), 201
 
 @app.route("/api/pipeline/<int:pid>", methods=["GET", "PUT", "DELETE"])
@@ -458,8 +487,8 @@ def api_pipeline_item(pid):
     """Get, update, or delete a specific pipeline entry."""
     user_id = request.user["id"]
     row = db.pipeline_get(pid)
-    
-    if not row or row["user_id"] != user_id:
+
+    if not row or row["created_by_user_id"] != user_id:
         return jsonify({"error": "Not found"}), 404
     
     if request.method == "GET":

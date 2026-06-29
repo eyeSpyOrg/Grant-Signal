@@ -44,40 +44,32 @@
 {% if results %}
   <p aria-live="polite"><strong>{{ "{:,}".format(results.total_results) }}</strong> result(s){% if results.num_pages > 1 %} — page {{ page + 1 }} of {{ results.num_pages }}{% endif %}</p>
   {% if results.organizations %}
-  <div class="table-scroll">
-  <table>
-    <thead>
-      <tr><th scope="col">Organization</th><th scope="col">Location</th><th scope="col">EIN</th><th scope="col">Actions</th></tr>
-    </thead>
-    <tbody>
-      {% for o in results.organizations %}
-      <tr>
-        <td><a href="{{ url_for('org_profile', ein=o.ein) }}"><strong>{{ o.name }}</strong></a>
-            {% if o.sub_name and o.sub_name != o.name %}<br><span class="small muted">{{ o.sub_name }}</span>{% endif %}</td>
-        <td>{{ o.city }}, {{ o.state }}</td>
-        <td>{{ o.ein | ein_fmt }}</td>
-        <td>
-          {% if o.ein|string in pipeline_eins %}
-            <span class="badge status-Awarded">In pipeline</span>
-          {% else %}
-          <form method="post" action="{{ url_for('pipeline_add') }}" style="display:inline">
-            <input type="hidden" name="ein" value="{{ o.ein }}">
-            <input type="hidden" name="name" value="{{ o.name }}">
-            <input type="hidden" name="next" value="{{ request.full_path }}">
-            <button class="btn btn-ghost btn-sm" type="submit">+ Pipeline</button>
-          </form>
-          {% endif %}
-          <form method="post" action="{{ url_for('indexer_add') }}" style="display:inline">
-            <input type="hidden" name="ein" value="{{ o.ein }}">
-            <input type="hidden" name="name" value="{{ o.name }}">
-            <input type="hidden" name="next" value="{{ request.full_path }}">
-            <button class="btn btn-ghost btn-sm" type="submit" title="Download this org's 990 grant lists">Index grants</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="card-grid">
+    {% for o in results.organizations %}
+    <div class="funder-card">
+      <h3><a href="{{ url_for('org_profile', ein=o.ein) }}">{{ o.name }}</a></h3>
+      {% if o.sub_name and o.sub_name != o.name %}<span class="small muted">{{ o.sub_name }}</span>{% endif %}
+      <span class="meta">{{ o.city }}, {{ o.state }} · EIN {{ o.ein | ein_fmt }}</span>
+      <div class="actions">
+        {% if o.ein|string in pipeline_eins %}
+          <span class="badge status-Awarded">In pipeline</span>
+        {% else %}
+        <form method="post" action="{{ url_for('pipeline_add') }}">
+          <input type="hidden" name="ein" value="{{ o.ein }}">
+          <input type="hidden" name="name" value="{{ o.name }}">
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+          <button class="btn btn-ghost btn-sm" type="submit">+ Pipeline</button>
+        </form>
+        {% endif %}
+        <form method="post" action="{{ url_for('indexer_add') }}">
+          <input type="hidden" name="ein" value="{{ o.ein }}">
+          <input type="hidden" name="name" value="{{ o.name }}">
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+          <button class="btn btn-ghost btn-sm" type="submit" title="Download this org's 990 grant lists">Index grants</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
   </div>
   <nav class="pager" aria-label="Search result pages">
     {% if page > 0 %}<a class="btn btn-ghost" href="{{ url_for('search', q=q, state=state, ntee=ntee, page=page-1) }}">← Previous</a>{% endif %}

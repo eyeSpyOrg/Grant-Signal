@@ -3,7 +3,7 @@
 {% block content %}
 <h1>Dashboard</h1>
 
-<div class="grid-3">
+<div class="grid-4">
   <div class="card stat">
     <span class="num">{{ "{:,}".format(stats.grants) }}</span>
     <span class="lbl">Grants in database</span>
@@ -16,7 +16,54 @@
     <span class="num">{{ stats.funders }}</span>
     <span class="lbl">Funders indexed</span>
   </div>
+  <div class="card stat">
+    <span class="num">{{ avg_grant | money }}</span>
+    <span class="lbl">Average grant size</span>
+  </div>
 </div>
+
+<h2>Pipeline at a glance</h2>
+<div class="stat-row">
+  <div class="card stat">
+    <span class="num">{{ funnel.requested }}</span>
+    <span class="lbl">Requested</span>
+  </div>
+  <div class="card stat">
+    <span class="num">{{ funnel.submitted }}</span>
+    <span class="lbl">Submitted</span>
+  </div>
+  <div class="card stat">
+    <span class="num">{{ funnel.in_pipeline }}</span>
+    <span class="lbl">In Pipeline</span>
+  </div>
+  <div class="card stat">
+    <span class="num">{{ funnel.drafts }}</span>
+    <span class="lbl">Active Drafts</span>
+  </div>
+  <div class="card stat stat-deadline">
+    {% if funnel.next_deadline %}
+    <span class="num small-num">{{ funnel.next_deadline.deadline_fmt }}</span>
+    <span class="lbl">Next Deadline — {{ funnel.next_deadline.name }}</span>
+    {% else %}
+    <span class="num small-num">—</span>
+    <span class="lbl">Next Deadline</span>
+    {% endif %}
+  </div>
+</div>
+
+{% if by_year %}
+<div class="card">
+  <h2>Grants by tax year</h2>
+  <div class="bars">
+    {% for y in by_year %}
+    <div class="bar" style="height: {{ y.pct }}%;">
+      <span class="bar-count">{{ y.n }}</span>
+      <span>{{ y.year }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
 
 <div class="grid-2">
   <!-- Team Pipeline -->
