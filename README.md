@@ -97,9 +97,37 @@ needs to be done once. After that, index any other funder you're curious about w
 |---|---|---|
 | Org search, profiles, financial history | [ProPublica Nonprofit Explorer API](https://projects.propublica.org/nonprofits/api) | No |
 | Itemized grants, key people | IRS Form 990 e-file XML via the public [GivingTuesday 990 Data Lake](https://gt990datalake-rawdata.s3.amazonaws.com) (S3) | No |
+| Open federal RFPs / deadlines | [Grants.gov Search2 API](https://www.grants.gov/api/api-guide) | No |
+| Awarded NIH/HHS research grants (find funders + PIs) | [NIH RePORTER API](https://api.reporter.nih.gov/) | No |
 
 The app fetches data on demand and caches it in Postgres. The Grants Database and Team Pipeline are
 shared across everyone who logs in; each person's "My Pipeline" is private to their account.
+
+### Open opportunities & research-funder APIs (`grants_gov.py`, `nih_reporter.py`)
+
+These fill the "no open-RFP feed" gap called out above. They're wired up as JSON endpoints
+(same auth pattern as the other `/api/*` routes — send `Authorization: Bearer <token>`, get
+one from `/api/token` while logged in) but don't have a dedicated page yet:
+
+```bash
+# Open/forecasted federal opportunities matching a keyword, with real deadlines
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://127.0.0.1:5001/api/opportunities?q=blind&rows=10"
+
+# NIH/HHS research grants already awarded for a topic — useful for finding which
+# institutes and program officers fund vision/disability-related work
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://127.0.0.1:5001/api/nih-projects?q=blindness&limit=10"
+```
+
+### HubSpot CSV export
+
+Both **Team Pipeline** and **My Pipeline** have an "Export to HubSpot (CSV)" button. It downloads
+a CSV with headers (`Deal Name`, `Deal Stage`, `Amount`, `Close Date`, `Deal Owner`, `Funder EIN`,
+`Contact`, `Notes`, `Create Date`) that map cleanly onto HubSpot's deal-import wizard. `Deal Stage`
+is exported as our own pipeline status text (Researching, Good Fit, Contacted, LOI Sent, Applied,
+Awarded, Declined) — create a custom "Grant Prospecting" deal pipeline in HubSpot with matching
+stage names before importing so the mapping is exact.
 
 ## Known limitations (vs. paid tools like Candid / Instrumentl)
 
@@ -126,6 +154,8 @@ auth.py           Login/session/API-token decorators
 db.py             Postgres storage (caches, grants, pipeline)
 propublica.py     ProPublica API client
 xml990.py         IRS 990 XML download + grant/people parser
+grants_gov.py     Grants.gov Search2 API client (open federal RFPs)
+nih_reporter.py   NIH RePORTER API client (awarded NIH/HHS research grants)
 indexer.py        Background indexing worker
 seed_funders.py   Curated starter funder list (verified EINs)
 templates/        HTML pages    static/  CSS + JS

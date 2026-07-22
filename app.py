@@ -4,13 +4,18 @@ Run:  python app.py   then open http://127.0.0.1:5000
 Data: ProPublica Nonprofit Explorer API (no key) + IRS 990 e-file XML via the
       public GivingTuesday data lake on S3 (no key).
 """
+import csv
+import datetime
+import io
 import os
 
-from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
+from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, Response
 from flask import session, redirect
 import auth
 import db
+import grants_gov
 import indexer
+import nih_reporter
 import propublica
 import seed_funders
 from seed_funders import EYESPY_EIN, EYESPY_NAME, SEED_FUNDERS, is_vision_match
@@ -305,6 +310,71 @@ def pipeline_personal():
     rows = db.pipeline_all_personal(user_id)
     return render_template("pipeline_personal.html", rows=rows, statuses=db.PIPELINE_STATUSES)
 
+
+def _hubspot_date(value):
+    """Reformat a YYYY-MM-DD (or epoch-seconds) value to HubSpot's default MM/DD/YYYY import format."""
+    if not value:
+        return ""
+    try:
+        if isinstance(value, (int, float)):
+            d = datetime.datetime.fromtimestamp(value).date()
+        else:
+            d = datetime.datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+        return d.strftime("%m/%d/%Y")
+    except (ValueError, TypeError):
+        return str(value)
+
+
+def _hubspot_amount(value):
+    """Strip a free-text ask amount (e.g. "$10,000") down to digits HubSpot's Amount field accepts."""
+    if not value:
+        return ""
+    digits = "".join(c for c in str(value) if c.isdigit() or c == ".")
+    return digits or str(value)
+
+
+def _pipeline_hubspot_csv(rows):
+    """Build a HubSpot-deal-import-ready CSV for a set of pipeline rows.
+
+    Columns match common HubSpot deal-import headers (Deal Name, Deal Stage, Amount,
+    Close Date, Deal Owner...) so they auto-map during HubSpot's CSV import wizard.
+    Deal Stage is exported as our own pipeline status text — create a custom "Grant
+    Prospecting" deal pipeline in HubSpot with matching stage names before importing.
+    """
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["Deal Name", "Deal Stage", "Amount", "Close Date", "Deal Owner",
+                      "Funder EIN", "Contact", "Notes", "Create Date"])
+    for p in rows:
+        p = dict(p)
+        owner = db.get_username_by_id(p.get("created_by_user_id")) if p.get("created_by_user_id") else ""
+        writer.writerow([
+            p.get("name") or "",
+            p.get("status") or "",
+            _hubspot_amount(p.get("ask_amount")),
+            _hubspot_date(p.get("deadline")),
+            owner or "",
+            p.get("ein") or "",
+            p.get("contact") or "",
+            p.get("notes") or "",
+            _hubspot_date(p.get("created_at")),
+        ])
+    return Response(buf.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": "attachment; filename=eyespy-pipeline-hubspot.csv"})
+
+
+@app.route("/pipeline/team/export/hubspot.csv")
+def pipeline_team_export_hubspot():
+    return _pipeline_hubspot_csv(db.pipeline_all_team())
+
+
+@app.route("/pipeline/personal/export/hubspot.csv")
+def pipeline_personal_export_hubspot():
+    user_id = session.get("user_id")
+    if not user_id:
+        return redirect(url_for("login"))
+    return _pipeline_hubspot_csv(db.pipeline_all_personal(user_id))
+
 @app.route("/pipeline/add", methods=["POST"])
 def pipeline_add():
     user_id = session.get("user_id")
@@ -523,14 +593,43 @@ def api_deadlines():
     """Get upcoming deadlines via API."""
     user_id = request.user["id"]
     days = request.args.get("days_ahead", default=30, type=int)
-    
+
     upcoming = db.deadlines_upcoming(user_id, days_ahead=days)
     overdue = db.deadlines_overdue(user_id)
-    
+
     return jsonify({
         "upcoming": [dict(d) for d in upcoming],
         "overdue": [dict(d) for d in overdue]
     })
+
+
+@app.route("/api/opportunities", methods=["GET"])
+@auth.require_api_token
+def api_opportunities():
+    """Search open federal grant opportunities (Grants.gov Search2 API)."""
+    q = request.args.get("q", "").strip()
+    status = request.args.get("status", grants_gov.OPP_STATUS_DEFAULT).strip()
+    rows = request.args.get("rows", default=25, type=int)
+    try:
+        data = grants_gov.search(keyword=q, opp_statuses=status, rows=min(rows, 100))
+    except Exception as e:
+        return jsonify({"error": f"Grants.gov search failed: {e}"}), 502
+    return jsonify(data)
+
+
+@app.route("/api/nih-projects", methods=["GET"])
+@auth.require_api_token
+def api_nih_projects():
+    """Search awarded NIH research projects by keyword (NIH RePORTER API)."""
+    q = request.args.get("q", "").strip()
+    limit = request.args.get("limit", default=25, type=int)
+    if not q:
+        return jsonify({"error": "q (keyword) is required"}), 400
+    try:
+        data = nih_reporter.search(keyword=q, limit=min(limit, 100))
+    except Exception as e:
+        return jsonify({"error": f"NIH RePORTER search failed: {e}"}), 502
+    return jsonify(data)
 
 
 

@@ -3,6 +3,9 @@
 {% block content %}
 <h1>👤 My Research Pipeline</h1>
 <p class="muted">Your private prospect list. Share items to the team when ready.</p>
+{% if rows %}
+<p><a class="btn btn-ghost btn-sm" href="{{ url_for('pipeline_personal_export_hubspot') }}">⇩ Export to HubSpot (CSV)</a></p>
+{% endif %}
 
 <details class="card">
   <summary><strong>+ Add a prospect manually</strong></summary>

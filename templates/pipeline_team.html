@@ -3,6 +3,9 @@
 {% block content %}
 <h1>🌐 Shared Team Pipeline</h1>
 <p class="muted">All prospects your team is tracking together.</p>
+{% if rows %}
+<p><a class="btn btn-ghost btn-sm" href="{{ url_for('pipeline_team_export_hubspot') }}">⇩ Export to HubSpot (CSV)</a></p>
+{% endif %}
 
 {% if rows %}
 {% for p in rows %}
