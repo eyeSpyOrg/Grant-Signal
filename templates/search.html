@@ -2,7 +2,9 @@
 {% block title %}Find Funders — Eye Spy Grant Scout{% endblock %}
 {% block content %}
 <h1>Find Funders &amp; Nonprofits</h1>
-<p class="muted">Searches every tax-exempt organization registered with the IRS (via ProPublica Nonprofit Explorer).</p>
+<p class="muted">Searches every tax-exempt organization registered with the IRS (via ProPublica Nonprofit Explorer).
+  Tick <strong>Grantmakers only</strong> to hide service organizations and show just the ones that file a 990-PF
+  and give money away.</p>
 
 <form method="get" action="{{ url_for('search') }}" class="card" role="search" aria-label="Funder search">
   <div class="form-row">
@@ -30,11 +32,17 @@
       <button class="btn" type="submit">Search</button>
     </div>
   </div>
+  <div class="form-row">
+    <div class="grow checkbox-row">
+      <input type="checkbox" id="pf_only" name="pf_only" value="1" {% if pf_only %}checked{% endif %}>
+      <label for="pf_only">Grantmakers only (990-PF private foundations)</label>
+    </div>
+  </div>
   <div class="toolbar small">
     <span class="muted">Quick searches:</span>
-    <a href="{{ url_for('search', q='foundation', state='FL') }}">Florida foundations</a> ·
-    <a href="{{ url_for('search', q='blind') }}">“blind” nationwide</a> ·
-    <a href="{{ url_for('search', q='vision', state='FL') }}">“vision” in Florida</a> ·
+    <a href="{{ url_for('search', q='foundation', state='FL', pf_only='1') }}">Florida grantmakers</a> ·
+    <a href="{{ url_for('search', q='blind', pf_only='1') }}">Blindness grantmakers</a> ·
+    <a href="{{ url_for('search', q='vision', state='FL', pf_only='1') }}">“vision” funders in Florida</a> ·
     <a href="{{ url_for('search', q='community foundation', state='FL') }}">FL community foundations</a>
   </div>
 </form>
@@ -42,39 +50,80 @@
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
 
 {% if results %}
-  <p aria-live="polite"><strong>{{ "{:,}".format(results.total_results) }}</strong> result(s){% if results.num_pages > 1 %} — page {{ page + 1 }} of {{ results.num_pages }}{% endif %}</p>
-  {% if results.organizations %}
+  <p aria-live="polite">
+    <strong>{{ "{:,}".format(results.total_results) }}</strong> result(s){% if results.num_pages > 1 %} — page {{ page + 1 }} of {{ results.num_pages }}{% endif %}
+    {% if pf_only %}
+      · showing <strong>{{ orgs|length }}</strong> grantmaker(s) found in {{ scanned_pages }} page(s) of results
+    {% endif %}
+  </p>
+  {% if orgs %}
+  <!-- The bulk-index form lives outside the cards so each card can keep its own
+       "add to pipeline" form; checkboxes join it via the HTML5 form= attribute. -->
+  <form method="post" action="{{ url_for('indexer_add_many') }}" id="bulk-index">
+    <input type="hidden" name="next" value="{{ request.full_path }}">
+    <div class="toolbar">
+      <button class="btn btn-ghost btn-sm" type="submit">⇩ Index selected funders’ grants</button>
+      <span class="small muted">Tick the funders you want to research, then index them all in one pass.</span>
+    </div>
+  </form>
   <div class="card-grid">
-    {% for o in results.organizations %}
+    {% for o in orgs %}
     <div class="funder-card">
-      <h3><a href="{{ url_for('org_profile', ein=o.ein) }}">{{ o.name }}</a></h3>
+      <h3>
+        <input type="checkbox" name="selected" value="{{ o.ein }}|{{ o.name }}" form="bulk-index"
+               aria-label="Select {{ o.name }} for indexing">
+        <a href="{{ url_for('org_profile', ein=o.ein) }}">{{ o.name }}</a>
+      </h3>
       {% if o.sub_name and o.sub_name != o.name %}<span class="small muted">{{ o.sub_name }}</span>{% endif %}
       <span class="meta">{{ o.city }}, {{ o.state }} · EIN {{ o.ein | ein_fmt }}</span>
+      <div class="badge-row">
+        {% if o.is_foundation %}
+          <span class="badge badge-form">Private foundation — makes grants</span>
+        {% elif o.classified %}
+          <span class="badge badge-muted">No 990-PF on file</span>
+        {% else %}
+          <span class="badge badge-muted">Type unknown</span>
+        {% endif %}
+        {% if o.state %}
+          {% if o.out_of_state %}
+            <span class="badge badge-warn">{{ o.state }} — outside {{ home_state }}, check eligibility</span>
+          {% else %}
+            <span class="badge badge-tag">{{ home_state }} — local</span>
+          {% endif %}
+        {% endif %}
+        {% if vision_match(o.name, o.sub_name) %}<span class="badge badge-vision">vision</span>{% endif %}
+        {% if o.grants_paid %}<span class="badge badge-tag">{{ o.grants_paid | money }} granted</span>{% endif %}
+      </div>
+      {% if o.signals %}
+      <ul class="signals small">{% for s in o.signals %}<li>{{ s }}</li>{% endfor %}</ul>
+      {% endif %}
       <div class="actions">
-        {% if o.ein|string in pipeline_eins %}
+        {% if o.in_pipeline %}
           <span class="badge status-Awarded">In pipeline</span>
         {% else %}
         <form method="post" action="{{ url_for('pipeline_add') }}">
           <input type="hidden" name="ein" value="{{ o.ein }}">
           <input type="hidden" name="name" value="{{ o.name }}">
           <input type="hidden" name="next" value="{{ request.full_path }}">
+          {% if o.out_of_state %}
+          <input type="hidden" name="eligibility_notes"
+                 value="Funder based in {{ o.state }} — confirm it funds outside {{ o.state }} before applying.">
+          {% endif %}
           <button class="btn btn-ghost btn-sm" type="submit">+ Pipeline</button>
         </form>
         {% endif %}
-        <form method="post" action="{{ url_for('indexer_add') }}">
-          <input type="hidden" name="ein" value="{{ o.ein }}">
-          <input type="hidden" name="name" value="{{ o.name }}">
-          <input type="hidden" name="next" value="{{ request.full_path }}">
-          <button class="btn btn-ghost btn-sm" type="submit" title="Download this org's 990 grant lists">Index grants</button>
-        </form>
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('org_profile', ein=o.ein) }}">Profile →</a>
       </div>
     </div>
     {% endfor %}
   </div>
   <nav class="pager" aria-label="Search result pages">
-    {% if page > 0 %}<a class="btn btn-ghost" href="{{ url_for('search', q=q, state=state, ntee=ntee, page=page-1) }}">← Previous</a>{% endif %}
-    {% if page + 1 < results.num_pages %}<a class="btn btn-ghost" href="{{ url_for('search', q=q, state=state, ntee=ntee, page=page+1) }}">Next →</a>{% endif %}
+    {% if page > 0 %}<a class="btn btn-ghost" href="{{ url_for('search', q=q, state=state, ntee=ntee, pf_only='1' if pf_only else None, page=page-1) }}">← Previous</a>{% endif %}
+    {% if page + scanned_pages < results.num_pages %}<a class="btn btn-ghost" href="{{ url_for('search', q=q, state=state, ntee=ntee, pf_only='1' if pf_only else None, page=page+scanned_pages) }}">Next →</a>{% endif %}
   </nav>
+  {% elif pf_only %}
+    <p class="muted">No 990-PF grantmakers in the first {{ scanned_pages }} page(s) of these results.
+      Try the next page, a broader keyword, or untick “Grantmakers only”.</p>
   {% else %}
     <p class="muted">No organizations matched. Try fewer words or remove filters.</p>
   {% endif %}

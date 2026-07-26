@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Federal Opportunities — Eye Spy Grant Scout{% endblock %}
+{% block content %}
+<h1>Federal Opportunities</h1>
+<p class="muted">Open and upcoming federal funding announcements from Grants.gov — public data, no login needed.
+  Unlike the Grants Database (which shows what foundations already paid), these are RFPs currently accepting
+  applications.</p>
+
+<form method="get" action="{{ url_for('opportunities') }}" class="card" role="search" aria-label="Opportunity search">
+  <fieldset class="agency-picker">
+    <legend>Browse by agency <span class="small muted">— higher signal than keyword search</span></legend>
+    <div class="checkbox-grid">
+      {% for code, label in agency_options.items() %}
+      <div class="checkbox-row">
+        <input type="checkbox" id="ag-{{ code }}" name="agency" value="{{ code }}" {% if code in agencies %}checked{% endif %}>
+        <label for="ag-{{ code }}">{{ label }}</label>
+      </div>
+      {% endfor %}
+    </div>
+  </fieldset>
+  <div class="form-row">
+    <div class="grow">
+      <label for="q">Keyword (optional)</label>
+      <input type="text" id="q" name="q" value="{{ q }}" placeholder="e.g. low vision, assistive technology">
+    </div>
+    <div class="shrink"><button class="btn" type="submit">Search</button></div>
+  </div>
+  <div class="form-row">
+    <div class="checkbox-row grow">
+      <input type="checkbox" id="title_only" name="title_only" value="1" {% if title_only %}checked{% endif %}>
+      <label for="title_only">Match the keyword in the <strong>title</strong> only
+        <span class="small muted">— Grants.gov searches full text, so “blind” otherwise returns double-blind
+          clinical trials and “assistive technology” returns semiconductor research.</span></label>
+    </div>
+  </div>
+  <div class="form-row">
+    <div class="checkbox-row grow">
+      <input type="checkbox" id="include_past" name="include_past" value="1" {% if include_past %}checked{% endif %}>
+      <label for="include_past">Include closed &amp; archived opportunities
+        <span class="small muted">— BVI programs run on ~5-year cycles; past rounds show when the next window
+          is likely to open.</span></label>
+    </div>
+  </div>
+  <div class="toolbar small">
+    <span class="muted">Presets:</span>
+    <a href="{{ url_for('opportunities', preset='bvi') }}">Blind / low-vision sweep</a> ·
+    <a href="{{ url_for('opportunities', agency='HHS-ACL') }}">HHS-ACL (NIDILRR, CILs)</a> ·
+    <a href="{{ url_for('opportunities', agency='ED') }}">Dept. of Education (OSERS)</a> ·
+    <a href="{{ url_for('opportunities', preset='bvi', include_past='1') }}">BVI incl. past cycles</a>
+  </div>
+</form>
+
+{% if session.get('user_id') and searched %}
+<form method="post" action="{{ url_for('opportunities_save_search') }}" class="toolbar">
+  <input type="hidden" name="q" value="{{ q }}">
+  {% for a in agencies %}<input type="hidden" name="agency" value="{{ a }}">{% endfor %}
+  <input type="hidden" name="title_only" value="{{ '1' if title_only else '0' }}">
+  <input type="text" name="label" placeholder="Name this watch (e.g. NEI accessibility tools)" aria-label="Watch name">
+  <button class="btn btn-ghost btn-sm" type="submit">☆ Watch this search</button>
+  <span class="small muted">Get told when a program you care about is reissued.</span>
+</form>
+{% endif %}
+
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+{% if data %}
+  <p aria-live="polite">
+    <strong>{{ data.results|length }}</strong> opportunity(ies) shown{% if data.total %} of {{ "{:,}".format(data.total) }} matched by Grants.gov{% endif %}{% if data.filtered %}
+      — {{ data.filtered }} hidden as off-topic full-text matches{% endif %}.
+  </p>
+
+  {% if lineages %}
+  <div class="card">
+    <h2>Program cycles <span class="small muted">(same program, multiple rounds)</span></h2>
+    <p class="small muted">Knowing when a closed program reopens is often worth more than any single open RFP.</p>
+    {% for g in lineages %}
+    <p><strong>{{ g.rows[0].title }}</strong><br>
+      {% for r in g.rows %}
+      <span class="badge badge-tag">{{ (r.open_date or r.close_date or "?")[:10] }} · {{ r.status }}</span>
+      {% endfor %}
+    </p>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% for r in data.results %}
+  <div class="card opp-card">
+    <h3><a href="{{ url_for('opportunity_detail', opp_id=r.id) }}">{{ r.title }}</a></h3>
+    <span class="meta">
+      {{ r.agency or r.agency_code }} · {{ r.number }}
+      {% if r.status %} · <span class="badge badge-tag">{{ r.status }}</span>{% endif %}
+      {% if vision_match(r.title) %} <span class="badge badge-vision">vision</span>{% endif %}
+      {% if r.matched_term %} <span class="badge badge-muted">matched “{{ r.matched_term }}”</span>{% endif %}
+    </span>
+    <span class="meta small">
+      {% if r.open_date %}Opens {{ r.open_date }}{% endif %}
+      {% if r.close_date %} · <strong>Closes {{ r.close_date }}</strong>{% endif %}
+      {% if r.cfda_list %} · CFDA {{ r.cfda_list | join(", ") }}{% endif %}
+    </span>
+    <div class="actions">
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('opportunity_detail', opp_id=r.id) }}">Award size &amp; eligibility →</a>
+      {% if r.url %}<a class="btn btn-ghost btn-sm" href="{{ r.url }}" rel="noopener">Grants.gov ↗</a>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+
+  {% if not data.results %}
+  <p class="muted">Nothing matched. Try an agency instead of a keyword, or tick “include closed &amp; archived”
+    — every BVI-specific federal program may simply be between cycles right now.</p>
+  {% endif %}
+{% elif not error %}
+  <p class="muted">Pick an agency above, or start with the <a href="{{ url_for('opportunities', preset='bvi') }}">blind
+    / low-vision sweep</a>.</p>
+{% endif %}
+{% endblock %}

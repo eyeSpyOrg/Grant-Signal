@@ -4,11 +4,21 @@ A free, local funder-research tool for the **Eye Spy Foundation** (Jacksonville,
 our own version of Candid / Instrumentl, built entirely on **public IRS Form 990 data**.
 
 - **Find Funders** — search every tax-exempt org registered with the IRS (3M+), filter by state and category.
+  Tick **Grantmakers only (990-PF)** to hide service organizations and see just the ones that give money away;
+  every result is badged with grantmaker status, state (flagged when it's outside Florida), and why it matched.
+  Select several at once to index their grants in one pass.
 - **Grants Database** — see *every grant* a foundation actually paid: recipient, location, purpose, and amount,
-  pulled straight from their 990 filings. Vision/blindness-related grants are auto-flagged.
-- **Funder profiles** — multi-year financials, qualifying distributions, key people, and links to 990 PDFs.
+  pulled straight from their 990 filings. Vision/blindness-related grants are auto-flagged. A new deployment
+  indexes the starter funders automatically, so this is never empty.
+- **Federal Opportunities** — open and upcoming Grants.gov RFPs, browsable **by agency** (HHS-ACL, ED/OSERS,
+  NIH/NEI…), with title-scoped keyword matching so "blind" doesn't return double-blind clinical trials.
+  Each opportunity shows award ceiling/floor, estimated funding and applicant eligibility. Include closed and
+  archived rounds to see when a ~5-year-cycle program is likely to reopen, and save a search to the
+  **Watchlist** to catch reissues.
+- **Funder profiles** — multi-year financials, grants paid, key people, and links to 990 PDFs.
 - **My Pipeline** — track prospects through Researching → Contacted → LOI → Applied → Awarded, with deadlines,
-  contacts, and notes.
+  contacts, eligibility notes, and notes. Import the team's HubSpot deal export so search results are deduped
+  against work already done outside the app, and export back to HubSpot in one click.
 - **Accessible UI** — high contrast, large-text toggle, keyboard- and screen-reader-friendly (built for a
   blind/low-vision organization).
 
@@ -28,6 +38,12 @@ pipeline is private to you; the Team Pipeline and Grants Database are shared wit
 
 > Note: the site is on Render's free tier, so it may take ~30–50 seconds to wake up if no one has visited
 > recently — that's normal, just wait for the first page to load.
+>
+> To avoid that cold start before sharing the link with a funder or board member, point a free uptime
+> pinger (UptimeRobot, cron-job.org, GitHub Actions on a schedule…) at
+> `https://eyespy-grant-scout.onrender.com/healthz` every 10 minutes. That endpoint is cheap and touches
+> nothing else. The app can't keep *itself* warm — Render only counts inbound traffic — so this has to be
+> an external ping.
 
 ---
 

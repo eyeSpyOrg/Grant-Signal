@@ -7,6 +7,8 @@
 <p><a class="btn btn-ghost btn-sm" href="{{ url_for('pipeline_personal_export_hubspot') }}">⇩ Export to HubSpot (CSV)</a></p>
 {% endif %}
 
+{% with import_target = 'personal' %}{% include "_pipeline_import.html" %}{% endwith %}
+
 <details class="card">
   <summary><strong>+ Add a prospect manually</strong></summary>
   <form method="post" action="{{ url_for('pipeline_add') }}">
@@ -58,6 +60,7 @@
     {% if p.ein %}<a href="{{ url_for('org_profile', ein=p.ein) }}">{{ p.name }}</a>{% else %}{{ p.name }}{% endif %}
     <span class="badge status-{{ p.status | replace(' ','.') }}">{{ p.status }}</span>
     {% if p.deadline %}<span class="badge badge-tag">Due {{ p.deadline }}</span>{% endif %}
+    {% if p.eligibility_notes %}<span class="badge badge-warn">{{ p.eligibility_notes }}</span>{% endif %}
   </h2>
   <form method="post" action="{{ url_for('pipeline_update', pid=p.id) }}">
     <div class="form-row">
@@ -78,6 +81,13 @@
       <div class="grow">
         <label for="ct-{{ p.id }}">Contact</label>
         <input type="text" id="ct-{{ p.id }}" name="contact" value="{{ p.contact or '' }}">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="grow">
+        <label for="el-{{ p.id }}">Eligibility notes <span class="small muted">(geography, applicant type, restrictions)</span></label>
+        <input type="text" id="el-{{ p.id }}" name="eligibility_notes" value="{{ p.eligibility_notes or '' }}"
+               placeholder="e.g. California only — FL ineligible">
       </div>
     </div>
     <div class="form-row">

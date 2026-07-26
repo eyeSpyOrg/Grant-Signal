@@ -4,6 +4,7 @@ Docs: https://projects.propublica.org/nonprofits/api
 Used for: org search, org profiles + financial history, and discovering the
 IRS e-file "object IDs" that let us fetch the raw 990 XML for grant details.
 """
+import concurrent.futures
 import re
 import requests
 
@@ -90,20 +91,118 @@ def discover_object_ids(ein, use_cache=True):
     return oids
 
 
+# A 990-PF's grantmaking shows up under different keys depending on which schedule
+# the filer completed, and ProPublica passes those through unchanged. Reading only
+# `qlfydistribtot` makes large, obviously-active funders (Lavelle, May & Stanley
+# Smith) render $0 — which reads as "this funder gives nothing" rather than "not
+# reported in that field." Try each in turn and report which one we used.
+PF_GRANT_FIELDS = [
+    ("qlfydistribtot", "qualifying distributions"),
+    ("contrpdpbks", "contributions & grants paid (books)"),
+    ("distribamt", "distributable amount"),
+    ("grntapprvfut", "grants approved for future payment"),
+]
+
+
+def pf_grants_paid(filing):
+    """Best available "grants paid" figure for a 990-PF filing.
+
+    Returns (amount, source_label). A falsy value in a field means "not reported
+    here", not "zero paid", so we fall through rather than displaying $0.
+    """
+    for key, label in PF_GRANT_FIELDS:
+        value = filing.get(key)
+        if value:
+            return value, label
+    return None, None
+
+
 def financial_history(org_data):
     """Condense filings_with_data into a simple list for display/charting."""
     out = []
     for f in org_data.get("filings_with_data", []):
         form = FORM_TYPES.get(f.get("formtype"), "990")
         expenses = f.get("totfuncexpns") or f.get("totexpnsexempt") or f.get("totexpnspbks")
+        grants_paid, grants_source = pf_grants_paid(f) if form == "990-PF" else (None, None)
         out.append({
             "year": f.get("tax_prd_yr"),
             "form": form,
             "revenue": f.get("totrevenue"),
             "expenses": expenses,
             "assets": f.get("totassetsend"),
-            "grants_paid": f.get("qlfydistribtot") if form == "990-PF" else None,
+            "grants_paid": grants_paid,
+            "grants_paid_source": grants_source,
             "pdf_url": f.get("pdf_url"),
         })
     out.sort(key=lambda x: x["year"] or 0, reverse=True)
     return out
+
+
+# ---------- grantmaker classification (990-PF) ----------
+
+def fetch_org_raw(ein):
+    """Pure-HTTP org fetch — no database access, so it is safe to call from a worker
+    thread (db connections are thread-local and would otherwise leak one per worker)."""
+    r = requests.get(f"{BASE}/organizations/{str(ein).replace('-', '')}.json",
+                     headers=HEADERS, timeout=30)
+    if r.status_code == 404:
+        return None
+    r.raise_for_status()
+    return r.json()
+
+
+def _summarize(ein, data):
+    """Reduce an org payload to the fields search results need to triage it."""
+    if not data:
+        return None
+    org = data.get("organization") or {}
+    history = financial_history(data)
+    pf = [h for h in history if h["form"] == "990-PF"]
+    latest = history[0] if history else {}
+    latest_pf = pf[0] if pf else {}
+    kind = {
+        "ein": str(ein),
+        "name": org.get("name"),
+        "state": org.get("state"),
+        "city": org.get("city"),
+        "ntee_code": org.get("ntee_code"),
+        "is_foundation": bool(pf),
+        "latest_form": latest.get("form"),
+        "latest_year": latest.get("year"),
+        "grants_paid": latest_pf.get("grants_paid"),
+        "total_expenses": latest.get("expenses"),
+    }
+    return kind
+
+
+def _safe_fetch(ein):
+    """A single failed lookup must not blank out the whole result page."""
+    try:
+        return ein, fetch_org_raw(ein)
+    except Exception:
+        return ein, None
+
+
+def classify_orgs(eins, max_workers=8, max_lookups=40):
+    """Return {ein: classification} for a page of search results.
+
+    Anything already cached (30-day TTL) is free; the rest are fetched in parallel
+    and cached, so the same result page is instant on every later visit. Lookups are
+    capped per call so one search can't fan out into hundreds of API requests.
+    Only this (the caller's) thread touches the database.
+    """
+    eins = [str(e).replace("-", "") for e in eins]
+    known = {k: dict(v) for k, v in db.get_org_kinds(eins).items()}
+    missing = [e for e in eins if e not in known][:max_lookups]
+    if not missing:
+        return known
+
+    fetched = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
+        fetched = list(pool.map(_safe_fetch, missing))
+    for ein, data in fetched:
+        kind = _summarize(ein, data)
+        if kind:
+            db.save_org_kind(**kind)
+            known[ein] = kind
+    return known

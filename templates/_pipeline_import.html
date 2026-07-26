@@ -1,0 +1,24 @@
+{# Shared HubSpot CSV import panel. `import_target` is "team" or "personal". #}
+{% set import_target = import_target | default('personal') %}
+<details class="card">
+  <summary><strong>⇧ Import from HubSpot / a spreadsheet (CSV)</strong></summary>
+  <p class="small muted">Load the deals your team has already researched so search results get flagged
+    <span class="badge status-Awarded">In pipeline</span> instead of being re-researched from scratch.
+    Rows already tracked here (matched by EIN, or by funder name) are skipped, so re-importing an updated
+    export is safe.</p>
+  <form method="post" action="{{ url_for('pipeline_import') }}" enctype="multipart/form-data">
+    <input type="hidden" name="visibility" value="{{ import_target }}">
+    <div class="form-row">
+      <div class="grow">
+        <label for="imp-file-{{ import_target }}">CSV file</label>
+        <input type="file" id="imp-file-{{ import_target }}" name="file" accept=".csv,text/csv" required>
+      </div>
+      <div class="shrink"><button class="btn" type="submit">Import</button></div>
+    </div>
+  </form>
+  <p class="small muted">Recognised columns (any order, case-insensitive):
+    <code>Deal Name</code>/<code>Funder</code>, <code>Deal Stage</code>/<code>Status</code>,
+    <code>Amount</code>, <code>Close Date</code>/<code>Deadline</code>, <code>Funder EIN</code>,
+    <code>Contact</code>, <code>Notes</code>, <code>Eligibility Notes</code>. This is the same shape the
+    Export button produces, so an export → HubSpot → re-export round trip imports cleanly.</p>
+</details>

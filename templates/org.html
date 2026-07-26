@@ -11,17 +11,26 @@
   {% if is_foundation %} <span class="badge badge-form">Private foundation (990-PF) — makes grants</span>{% endif %}
 </p>
 
+<p>
+  {% if out_of_state %}
+    <span class="badge badge-warn">Based in {{ org_state }} — outside {{ home_state }}</span>
+    <span class="small muted">Geography is the most common disqualifier: many funders restrict giving to their own
+      state, county or service area. Confirm this one funds in {{ home_state }} before investing time, and record
+      what you find in <strong>Eligibility notes</strong> below so nobody re-researches it.</span>
+  {% elif org_state %}
+    <span class="badge badge-tag">Based in {{ home_state }} — same state as Eye Spy</span>
+  {% endif %}
+</p>
+
 <div class="toolbar">
   {% if in_pipeline %}
-    <span class="badge status-Awarded">In your pipeline</span>
-  {% else %}
-  <form method="post" action="{{ url_for('pipeline_add') }}">
-    <input type="hidden" name="ein" value="{{ ein }}">
-    <input type="hidden" name="name" value="{{ org.name }}">
-    <input type="hidden" name="next" value="{{ request.path }}">
-    <button class="btn" type="submit">+ Add to pipeline</button>
-  </form>
+    <span class="badge status-Awarded">In pipeline — {{ in_pipeline.status }}</span>
+    {% if in_pipeline.eligibility_notes %}
+      <span class="badge badge-warn">Eligibility: {{ in_pipeline.eligibility_notes }}</span>
+    {% endif %}
   {% endif %}
+  <a class="btn btn-ghost" href="{{ url_for('org_hubspot_row', ein=ein) }}"
+     title="Download this funder as a single HubSpot-import row">⇩ Copy as HubSpot row</a>
   <form method="post" action="{{ url_for('indexer_add') }}">
     <input type="hidden" name="ein" value="{{ ein }}">
     <input type="hidden" name="name" value="{{ org.name }}">
@@ -34,6 +43,58 @@
      rel="noopener">View on ProPublica ↗</a>
 </div>
 
+{% if not in_pipeline %}
+<details class="card" {% if request.args.get('add') %}open{% endif %}>
+  <summary><strong>+ Add to pipeline with notes</strong></summary>
+  <p class="small muted">Record what you learned here once — eligibility limits especially — so the next teammate
+    who finds this funder doesn’t have to rediscover it.</p>
+  <form method="post" action="{{ url_for('pipeline_add') }}">
+    <input type="hidden" name="ein" value="{{ ein }}">
+    <input type="hidden" name="name" value="{{ org.name }}">
+    <input type="hidden" name="next" value="{{ request.path }}">
+    <div class="form-row">
+      <div>
+        <label for="op-status">Status</label>
+        <select id="op-status" name="status">
+          {% for s in statuses %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="op-ask">Ask amount</label>
+        <input type="text" id="op-ask" name="ask_amount" placeholder="$10,000">
+      </div>
+      <div>
+        <label for="op-deadline">Deadline</label>
+        <input type="date" id="op-deadline" name="deadline">
+      </div>
+      <div>
+        <label for="op-visibility">Save to</label>
+        <select id="op-visibility" name="visibility">
+          <option value="personal">My pipeline</option>
+          <option value="team">Team pipeline</option>
+        </select>
+      </div>
+      <div class="grow">
+        <label for="op-contact">Contact</label>
+        <input type="text" id="op-contact" name="contact" placeholder="Name, email, phone">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="grow">
+        <label for="op-elig">Eligibility notes (geography, applicant type, restrictions)</label>
+        <input type="text" id="op-elig" name="eligibility_notes"
+               value="{% if out_of_state %}Funder based in {{ org_state }} — confirm it funds outside {{ org_state }}.{% endif %}">
+      </div>
+      <div class="grow">
+        <label for="op-notes">Notes</label>
+        <input type="text" id="op-notes" name="notes">
+      </div>
+      <div class="shrink"><button class="btn" type="submit">Add to pipeline</button></div>
+    </div>
+  </form>
+</details>
+{% endif %}
+
 {% if history %}
 <div class="card">
   <h2>Financial history</h2>
@@ -43,7 +104,7 @@
       <th scope="col">Tax year</th><th scope="col">Form</th>
       <th scope="col" class="num">Total revenue</th><th scope="col" class="num">Total expenses</th>
       <th scope="col" class="num">Total assets</th>
-      {% if is_foundation %}<th scope="col" class="num">Qualifying distributions</th>{% endif %}
+      {% if is_foundation %}<th scope="col" class="num">Grants paid<br><span class="small muted">(qualifying distributions)</span></th>{% endif %}
       <th scope="col">990 PDF</th>
     </tr></thead>
     <tbody>
@@ -53,13 +114,28 @@
         <td class="num">{{ h.revenue | money }}</td>
         <td class="num">{{ h.expenses | money }}</td>
         <td class="num">{{ h.assets | money }}</td>
-        {% if is_foundation %}<td class="num">{{ h.grants_paid | money }}</td>{% endif %}
+        {% if is_foundation %}
+        <td class="num">
+          {% if h.grants_paid %}{{ h.grants_paid | money }}
+            {% if h.grants_paid_source and h.grants_paid_source != 'qualifying distributions' %}
+              <br><span class="small muted">{{ h.grants_paid_source }}</span>
+            {% endif %}
+          {% elif h.form == '990-PF' %}
+            <span title="Not reported in any grants-paid field of this filing — see the 990 PDF">—</span>
+          {% else %}—{% endif %}
+        </td>
+        {% endif %}
         <td>{% if h.pdf_url %}<a href="{{ h.pdf_url }}" rel="noopener">PDF ↗</a>{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   </div>
+  {% if is_foundation %}
+  <p class="small muted">“Grants paid” reads the 990-PF’s qualifying-distributions field, falling back to
+    contributions/grants paid and distributable amount when a filer reports elsewhere. A dash means the figure
+    isn’t in the machine-readable filing — check the 990 PDF; it does <em>not</em> mean the funder gave nothing.</p>
+  {% endif %}
 </div>
 {% endif %}
 

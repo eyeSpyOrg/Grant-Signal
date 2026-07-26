@@ -104,6 +104,40 @@ CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT
 );
+-- Cached IRS classification per org, so search results can be badged/filtered by
+-- "is this a grantmaker (990-PF)" without opening every profile. Form type rarely
+-- changes, so this is cached far longer than the raw ProPublica payload.
+CREATE TABLE IF NOT EXISTS org_kind (
+    ein TEXT PRIMARY KEY,
+    name TEXT,
+    state TEXT,
+    city TEXT,
+    ntee_code TEXT,
+    is_foundation BOOLEAN,
+    latest_form TEXT,
+    latest_year INTEGER,
+    grants_paid BIGINT,
+    total_expenses BIGINT,
+    checked_at DOUBLE PRECISION NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_org_kind_foundation ON org_kind(is_foundation);
+-- Saved federal-opportunity searches: lets a user watch a program family (e.g. NEI
+-- accessibility tools) and see when grants.gov posts something new for it.
+CREATE TABLE IF NOT EXISTS saved_searches (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    label TEXT NOT NULL,
+    keyword TEXT,
+    agencies TEXT,
+    statuses TEXT,
+    title_only BOOLEAN DEFAULT TRUE,
+    seen_ids TEXT,
+    created_at DOUBLE PRECISION NOT NULL,
+    checked_at DOUBLE PRECISION
+);
+CREATE INDEX IF NOT EXISTS idx_saved_searches_user ON saved_searches(user_id);
+ALTER TABLE pipeline ADD COLUMN IF NOT EXISTS eligibility_notes TEXT;
+ALTER TABLE pipeline ADD COLUMN IF NOT EXISTS source TEXT;
 """
 
 PIPELINE_STATUSES = ["Researching", "Good Fit", "Contacted", "LOI Sent", "Applied", "Awarded", "Declined"]
@@ -134,16 +168,60 @@ class _PGConn:
         return self._conn.cursor()
 
 
+# Schema DDL is applied once per process, not once per connection. Connections are
+# thread-local, so re-running it on every new thread meant several threads issuing
+# CREATE/ALTER concurrently — and ALTER TABLE takes an AccessExclusiveLock even when
+# the column already exists, which deadlocks under normal concurrent traffic. The
+# advisory lock serializes the one run across gunicorn workers too.
+_schema_lock = threading.Lock()
+_schema_applied = False
+_SCHEMA_LOCK_ID = 728_311_045   # arbitrary, app-specific advisory lock key
+
+
+def _apply_schema(raw):
+    global _schema_applied
+    with _schema_lock:
+        if _schema_applied:
+            return
+        with raw.cursor() as cur:
+            cur.execute("SELECT pg_advisory_lock(%s)", (_SCHEMA_LOCK_ID,))
+            try:
+                cur.execute(SCHEMA)
+                raw.commit()
+            finally:
+                cur.execute("SELECT pg_advisory_unlock(%s)", (_SCHEMA_LOCK_ID,))
+                raw.commit()
+        _schema_applied = True
+
+
 def get_db():
     conn = getattr(_local, "conn", None)
     if conn is None or conn._conn.closed:
         raw = psycopg.connect(DATABASE_URL, row_factory=dict_row)
-        with raw.cursor() as cur:
-            cur.execute(SCHEMA)
-        raw.commit()
+        _apply_schema(raw)
         conn = _PGConn(raw)
         _local.conn = conn
     return conn
+
+
+def end_request(exc=None):
+    """Close out this thread's transaction at the end of a request.
+
+    psycopg opens a transaction for *every* statement, including plain SELECTs, so
+    a connection that is never committed sits "idle in transaction" holding locks
+    indefinitely. One such connection is enough to block the next schema change and
+    stall every other worker. Registered as a Flask teardown handler.
+    """
+    conn = getattr(_local, "conn", None)
+    if conn is None or conn._conn.closed:
+        return
+    try:
+        conn.rollback() if exc is not None else conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
 
 
 def pipeline_all_team():
@@ -384,19 +462,22 @@ def pipeline_has_ein(ein):
     return get_db().execute("SELECT id FROM pipeline WHERE ein=%s", (str(ein),)).fetchone()
 
 
-def pipeline_add(ein, name, status="Researching", ask_amount="", deadline="", contact="", notes="", created_by_user_id=None):
+def pipeline_add(ein, name, status="Researching", ask_amount="", deadline="", contact="", notes="",
+                 created_by_user_id=None, eligibility_notes="", visibility="personal", source=None):
     now = time.time()
     db = get_db()
     cur = db.execute(
-        "INSERT INTO pipeline (created_by_user_id, ein, name, status, ask_amount, deadline, contact, notes, created_at, updated_at)"
-        " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
-        (created_by_user_id, str(ein) if ein else None, name, status, ask_amount, deadline, contact, notes, now, now))
+        "INSERT INTO pipeline (created_by_user_id, ein, name, status, ask_amount, deadline, contact, notes,"
+        " eligibility_notes, visibility, source, created_at, updated_at)"
+        " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+        (created_by_user_id, str(ein) if ein else None, name, status, ask_amount, deadline, contact, notes,
+         eligibility_notes, visibility, source, now, now))
     new_id = cur.fetchone()["id"]
     db.commit()
     return new_id
 
 def pipeline_update(pid, **fields):
-    allowed = {"status", "ask_amount", "deadline", "contact", "notes", "name"}
+    allowed = {"status", "ask_amount", "deadline", "contact", "notes", "name", "eligibility_notes"}
     sets, params = [], []
     for k, v in fields.items():
         if k in allowed:
@@ -528,3 +609,121 @@ def deadlines_by_month(user_id=None, year=None, month=None):  # Ignore user_id p
     """
     params = [str(year).zfill(4), str(month).zfill(2)]
     return get_db().execute(sql, params).fetchall()
+
+
+# ---------- settings (small key/value store for one-time bootstrap flags) ----------
+
+def setting_get(key, default=None):
+    row = get_db().execute("SELECT value FROM settings WHERE key=%s", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def setting_set(key, value):
+    db = get_db()
+    db.execute("INSERT INTO settings (key, value) VALUES (%s,%s)"
+               " ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value", (key, str(value)))
+    db.commit()
+
+
+# ---------- org classification cache (grantmaker vs. charity) ----------
+
+ORG_KIND_TTL = 30 * 86400  # form type effectively never changes; refresh monthly
+
+
+def get_org_kinds(eins, max_age=ORG_KIND_TTL):
+    """Return {ein: row} for the EINs we already have a fresh classification for."""
+    eins = [str(e).replace("-", "") for e in eins]
+    if not eins:
+        return {}
+    rows = get_db().execute(
+        "SELECT * FROM org_kind WHERE ein = ANY(%s) AND checked_at > %s",
+        (eins, time.time() - max_age)).fetchall()
+    return {r["ein"]: r for r in rows}
+
+
+def save_org_kind(ein, name=None, state=None, city=None, ntee_code=None, is_foundation=None,
+                  latest_form=None, latest_year=None, grants_paid=None, total_expenses=None):
+    db = get_db()
+    db.execute(
+        "INSERT INTO org_kind (ein, name, state, city, ntee_code, is_foundation, latest_form,"
+        " latest_year, grants_paid, total_expenses, checked_at)"
+        " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+        " ON CONFLICT (ein) DO UPDATE SET name=EXCLUDED.name, state=EXCLUDED.state, city=EXCLUDED.city,"
+        " ntee_code=EXCLUDED.ntee_code, is_foundation=EXCLUDED.is_foundation, latest_form=EXCLUDED.latest_form,"
+        " latest_year=EXCLUDED.latest_year, grants_paid=EXCLUDED.grants_paid,"
+        " total_expenses=EXCLUDED.total_expenses, checked_at=EXCLUDED.checked_at",
+        (str(ein).replace("-", ""), name, state, city, ntee_code, is_foundation, latest_form,
+         latest_year, grants_paid, total_expenses, time.time()))
+    db.commit()
+
+
+# ---------- pipeline dedupe & import ----------
+
+def pipeline_known_eins():
+    """Every EIN anywhere in the pipeline — including rows imported from HubSpot."""
+    rows = get_db().execute("SELECT DISTINCT ein FROM pipeline WHERE ein IS NOT NULL AND ein != ''").fetchall()
+    return {str(r["ein"]).replace("-", "") for r in rows}
+
+
+def pipeline_known_names():
+    """Normalized funder names already tracked, for dedupe when a row carries no EIN."""
+    rows = get_db().execute("SELECT DISTINCT name FROM pipeline WHERE name IS NOT NULL").fetchall()
+    return {normalize_name(r["name"]) for r in rows if r["name"]}
+
+
+def normalize_name(name):
+    """Loose funder-name key: case/punctuation/suffix-insensitive, for cross-source dedupe."""
+    s = "".join(c.lower() if (c.isalnum() or c.isspace()) else " " for c in str(name or ""))
+    drop = {"the", "inc", "incorporated", "foundation", "fund", "trust", "charitable", "co", "corp", "llc"}
+    words = [w for w in s.split() if w not in drop]
+    return " ".join(words) or " ".join(s.split())
+
+
+def pipeline_find_match(ein=None, name=None):
+    """Find an existing pipeline row for this funder by EIN first, then by normalized name."""
+    db = get_db()
+    if ein:
+        row = db.execute("SELECT * FROM pipeline WHERE ein=%s LIMIT 1", (str(ein).replace("-", ""),)).fetchone()
+        if row:
+            return row
+    if name:
+        key = normalize_name(name)
+        for row in db.execute("SELECT * FROM pipeline").fetchall():
+            if normalize_name(row["name"]) == key:
+                return row
+    return None
+
+
+# ---------- saved federal-opportunity searches ----------
+
+def saved_search_add(user_id, label, keyword="", agencies="", statuses="forecasted|posted", title_only=True):
+    db = get_db()
+    cur = db.execute(
+        "INSERT INTO saved_searches (user_id, label, keyword, agencies, statuses, title_only, seen_ids, created_at)"
+        " VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+        (user_id, label, keyword, agencies, statuses, title_only, "", time.time()))
+    new_id = cur.fetchone()["id"]
+    db.commit()
+    return new_id
+
+
+def saved_searches_for(user_id):
+    return get_db().execute(
+        "SELECT * FROM saved_searches WHERE user_id=%s ORDER BY created_at DESC", (user_id,)).fetchall()
+
+
+def saved_search_get(sid):
+    return get_db().execute("SELECT * FROM saved_searches WHERE id=%s", (sid,)).fetchone()
+
+
+def saved_search_mark_seen(sid, ids):
+    db = get_db()
+    db.execute("UPDATE saved_searches SET seen_ids=%s, checked_at=%s WHERE id=%s",
+               (",".join(str(i) for i in ids), time.time(), sid))
+    db.commit()
+
+
+def saved_search_delete(sid, user_id):
+    db = get_db()
+    db.execute("DELETE FROM saved_searches WHERE id=%s AND user_id=%s", (sid, user_id))
+    db.commit()

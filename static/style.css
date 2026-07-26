@@ -591,6 +591,80 @@ th.num {
   color: var(--green);
 }
 
+.badge-warn {
+  background: #fdece0;
+  color: #8a4b13;
+  border: 1px solid #e6b98d;
+  white-space: normal;
+}
+
+.badge-muted {
+  background: #eef1f6;
+  color: var(--muted);
+}
+
+/* Search-result triage: badges + "why this matched" signals */
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+  margin: .4rem 0;
+}
+
+.signals {
+  margin: .3rem 0 .5rem 1.1rem;
+  color: var(--muted);
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: baseline;
+  gap: .5rem;
+}
+
+.checkbox-row label {
+  font-weight: 500;
+}
+
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: .4rem .9rem;
+}
+
+.agency-picker {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: .7rem 1rem 1rem;
+  margin-bottom: .9rem;
+}
+
+.agency-picker legend {
+  font-weight: 700;
+  padding: 0 .4rem;
+}
+
+/* Federal opportunity cards: never truncate a title — reading "Employment Among
+   People Who Are …" as "blind or low vision" when it says "Deaf or Hard of
+   Hearing" is a silent, expensive error. */
+.opp-card h3 {
+  margin: 0 0 .3rem;
+  overflow-wrap: anywhere;
+}
+
+.opp-card .meta {
+  display: block;
+  color: var(--muted);
+  margin-bottom: .25rem;
+}
+
+.opp-text {
+  max-height: 22rem;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
 .status-Researching {
   background: #e3eaf9;
   color: var(--navy);

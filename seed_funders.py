@@ -8,6 +8,9 @@ Two groups:
 
 EYESPY_EIN = "922490137"
 EYESPY_NAME = "Eye Spy Foundation Inc"
+# Geography is the #1 disqualifier in grant research, so results are flagged
+# relative to where we are actually based.
+HOME_STATE = "FL"
 
 SEED_FUNDERS = [
     # --- Jacksonville / Northeast Florida ---
