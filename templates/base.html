@@ -22,6 +22,7 @@
           <li><a class="sidebar-link" href="{{ url_for('dashboard') }}" {% if request.endpoint=='dashboard' %}aria-current="page"{% endif %}><span class="icon" aria-hidden="true">⌂</span>Dashboard</a></li>
           <li><a class="sidebar-link" href="{{ url_for('search') }}" {% if request.endpoint=='search' %}aria-current="page"{% endif %}><span class="icon" aria-hidden="true">⌕</span>Find Funders</a></li>
           <li><a class="sidebar-link" href="{{ url_for('grants') }}" {% if request.endpoint=='grants' %}aria-current="page"{% endif %}><span class="icon" aria-hidden="true">$</span>Grants Database</a></li>
+          <li><a class="sidebar-link" href="{{ url_for('opportunities') }}" {% if request.endpoint in ['opportunities', 'opportunity_detail'] %}aria-current="page"{% endif %}><span class="icon" aria-hidden="true">🏛</span>Federal Opportunities</a></li>
         </ul>
 
         <p class="sidebar-group-label">Pipeline</p>
@@ -37,6 +38,7 @@
         <ul class="sidebar-group">
           <li><a class="sidebar-link" href="{{ url_for('indexer_page') }}" {% if request.endpoint=='indexer_page' %}aria-current="page"{% endif %}><span class="icon" aria-hidden="true">⇩</span>Indexer</a></li>
           <li><a class="sidebar-link" href="{{ url_for('deadlines_view') }}" {% if request.endpoint=='deadlines_view' %}aria-current="page"{% endif %}><span class="icon" aria-hidden="true">📅</span>Deadlines</a></li>
+          <li><a class="sidebar-link" href="{{ url_for('opportunities_watchlist') }}" {% if request.endpoint=='opportunities_watchlist' %}aria-current="page"{% endif %}><span class="icon" aria-hidden="true">☆</span>Watchlist</a></li>
         </ul>
         {% endif %}
       </nav>

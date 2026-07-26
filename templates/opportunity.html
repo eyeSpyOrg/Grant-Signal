@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}{{ detail.title if detail else "Opportunity" }} — Eye Spy Grant Scout{% endblock %}
+{% block content %}
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+{% if detail %}
+<p class="small"><a href="{{ url_for('opportunities') }}">← Back to opportunities</a></p>
+<h1>{{ detail.title }}</h1>
+<p class="muted">
+  {{ detail.agency or detail.agency_code }} · {{ detail.number }}
+  {% if detail.status %} · <span class="badge badge-tag">{{ detail.status }}</span>{% endif %}
+</p>
+
+<div class="toolbar">
+  {% if in_pipeline %}
+    <span class="badge status-Awarded">In pipeline — {{ in_pipeline.status }}</span>
+  {% elif session.get('user_id') %}
+  <form method="post" action="{{ url_for('pipeline_add') }}">
+    <input type="hidden" name="name" value="{{ detail.title }}">
+    <input type="hidden" name="deadline" value="{{ (detail.close_date or '')[:10] }}">
+    <input type="hidden" name="ask_amount" value="{{ detail.award_ceiling or '' }}">
+    <input type="hidden" name="notes" value="{{ detail.number }} · {{ detail.agency or '' }} · {{ detail.url }}">
+    <input type="hidden" name="eligibility_notes" value="{{ (detail.applicant_types or []) | join('; ') }}">
+    <input type="hidden" name="source" value="grants.gov">
+    <input type="hidden" name="next" value="{{ request.path }}">
+    <button class="btn" type="submit">+ Add to pipeline</button>
+  </form>
+  {% endif %}
+  <a class="btn btn-ghost" href="{{ detail.url }}" rel="noopener">View on Grants.gov ↗</a>
+</div>
+
+<div class="card">
+  <h2>Go / no-go</h2>
+  <div class="table-scroll">
+  <table>
+    <tbody>
+      <tr><th scope="row">Award ceiling</th><td class="num">{{ detail.award_ceiling | money }}</td></tr>
+      <tr><th scope="row">Award floor</th><td class="num">{{ detail.award_floor | money }}</td></tr>
+      <tr><th scope="row">Estimated total funding</th><td class="num">{{ detail.estimated_funding | money }}</td></tr>
+      <tr><th scope="row">Expected number of awards</th><td class="num">{{ detail.expected_awards or "—" }}</td></tr>
+      <tr><th scope="row">Cost sharing required</th><td>{{ detail.cost_sharing if detail.cost_sharing is not none else "—" }}</td></tr>
+      <tr><th scope="row">Posted</th><td>{{ detail.post_date or "—" }}</td></tr>
+      <tr><th scope="row">Closes</th><td>{{ detail.close_date or "—" }}{% if detail.close_note %} <span class="small muted">({{ detail.close_note }})</span>{% endif %}</td></tr>
+      {% if detail.cfda_list %}<tr><th scope="row">CFDA</th><td>{{ detail.cfda_list | join(", ") }}</td></tr>{% endif %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Who can apply</h2>
+  {% if detail.applicant_types %}
+  <ul>{% for a in detail.applicant_types %}<li>{{ a }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if detail.eligibility %}
+  <div class="opp-text">{{ detail.eligibility | striptags }}</div>
+  {% else %}
+  <p class="muted">No eligibility text in the machine-readable record — check the Grants.gov page.</p>
+  {% endif %}
+  <p class="small muted">Read this before ruling a program out: several NIDILRR programs that look
+    university-only explicitly include “public or private organizations”.</p>
+</div>
+
+{% if detail.description %}
+<div class="card">
+  <h2>Description</h2>
+  <div class="opp-text">{{ detail.description | striptags }}</div>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

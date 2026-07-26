@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Page not found — Eye Spy Grant Scout{% endblock %}
+{% block content %}
+<h1>That page doesn’t exist</h1>
+<p class="muted">The address <code>{{ request.path }}</code> isn’t part of Grant Scout. Here’s where you probably meant to go:</p>
+<ul>
+  <li><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
+  <li><a href="{{ url_for('search') }}">Find Funders</a> — search 3M+ IRS-registered orgs, filter to grantmakers</li>
+  <li><a href="{{ url_for('grants') }}">Grants Database</a> — every grant a foundation actually paid</li>
+  <li><a href="{{ url_for('opportunities') }}">Federal Opportunities</a> — open Grants.gov RFPs</li>
+  <li><a href="{{ url_for('pipeline_team') }}">Team Pipeline</a></li>
+</ul>
+{% endblock %}

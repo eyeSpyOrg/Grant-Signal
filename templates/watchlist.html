@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Opportunity Watchlist — Eye Spy Grant Scout{% endblock %}
+{% block content %}
+<h1>Opportunity Watchlist</h1>
+<p class="muted">Saved Grants.gov searches, re-run each time you open this page. Anything posted since your last
+  visit is flagged <span class="badge badge-vision">new</span> — that’s how a program that only reopens every
+  five years gets caught.</p>
+
+{% if watches %}
+  {% for w in watches %}
+  <div class="card">
+    <h2 style="margin-top:0">
+      {{ w.search.label }}
+      {% if w.new_count %}<span class="badge badge-vision">{{ w.new_count }} new</span>{% endif %}
+    </h2>
+    <p class="small muted">
+      {% if w.search.keyword %}Keyword “{{ w.search.keyword }}”{% if w.search.title_only %} (title only){% endif %}{% endif %}
+      {% if w.search.agencies %} · Agencies: {{ w.search.agencies.replace('|', ', ') }}{% endif %}
+    </p>
+    {% if w.error %}<p class="error">Could not refresh: {{ w.error }}</p>{% endif %}
+    {% if w.first_check %}<p class="small muted">First check — everything below is the baseline; future
+      postings will be flagged as new.</p>{% endif %}
+    {% if w.rows %}
+    <ul>
+      {% for r in w.rows %}
+      <li>
+        {% if r.is_new %}<span class="badge badge-vision">new</span> {% endif %}
+        <a href="{{ url_for('opportunity_detail', opp_id=r.id) }}">{{ r.title }}</a>
+        <span class="small muted">— {{ r.agency or r.agency_code }}{% if r.close_date %} · closes {{ r.close_date }}{% endif %}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">Nothing open right now. This program family may be between cycles —
+      <a href="{{ url_for('opportunities', q=w.search.keyword, include_past='1') }}">see past rounds</a>
+      to estimate the next window.</p>
+    {% endif %}
+    <form method="post" action="{{ url_for('opportunities_delete_search', sid=w.search.id) }}"
+          onsubmit="return confirm('Stop watching {{ w.search.label|e }}?')">
+      <button class="btn btn-danger btn-sm" type="submit">Stop watching</button>
+    </form>
+  </div>
+  {% endfor %}
+{% else %}
+<p class="muted">No saved searches yet. Run a search on
+  <a href="{{ url_for('opportunities') }}">Federal Opportunities</a> and click “Watch this search”.</p>
+{% endif %}
+{% endblock %}
