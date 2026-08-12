@@ -375,6 +375,104 @@ def pipeline_personal_export_hubspot():
         return redirect(url_for("login"))
     return _pipeline_hubspot_csv(db.pipeline_all_personal(user_id))
 
+
+# ---------- Application History ----------------
+
+@app.route("/history")
+def history_view():
+    """Team-wide application history (awarded / declined / pending)."""
+    outcome_filter = request.args.get("outcome", "")
+    year_filter = request.args.get("year", "")
+    min_amount = request.args.get("min_amount", "")
+    max_amount = request.args.get("max_amount", "")
+    
+    year_n = int(year_filter) if year_filter and year_filter.isdigit() else None
+    min_amt = float(min_amount) if min_amount and min_amount.replace(".", "").isdigit() else None
+    max_amt = float(max_amount) if max_amount and max_amount.replace(".", "").isdigit() else None
+    
+    rows = db.history_all_team(outcome=outcome_filter or None, year=year_n,
+                               min_amount=min_amt, max_amount=max_amt)
+    rows = [dict(r) for r in rows]
+    for r in rows:
+        r["created_by_username"] = db.get_username_by_id(r["created_by_user_id"]) if r["created_by_user_id"] else "Unknown"
+    
+    # Get available years for filter dropdown
+    all_rows = db.history_all_team()
+    years = sorted(set(r["applied_date"][:4] for r in all_rows if r["applied_date"]), reverse=True)
+    
+    return render_template("history.html", rows=rows, outcomes=db.HISTORY_OUTCOMES,
+                           outcome_filter=outcome_filter, year_filter=year_filter,
+                           min_amount=min_amount, max_amount=max_amount,
+                           years=years)
+
+
+@app.route("/history/add", methods=["POST"])
+def history_add():
+    user_id = session.get("user_id")
+    if not user_id:
+        flash("You must be logged in to add entries.")
+        return redirect(url_for("login"))
+    funder_name = request.form.get("funder_name", "").strip()
+    if not funder_name:
+        flash("Funder name is required.")
+        return redirect(url_for("history_view"))
+    db.history_add(
+        funder_name=funder_name,
+        funder_ein=request.form.get("funder_ein", "").strip().replace("-", "") or None,
+        program_name=request.form.get("program_name", "").strip() or None,
+        applied_date=request.form.get("applied_date", "").strip() or None,
+        decision_date=request.form.get("decision_date", "").strip() or None,
+        outcome=request.form.get("outcome", "Pending"),
+        amount_requested=request.form.get("amount_requested", "").strip() or None,
+        amount_awarded=request.form.get("amount_awarded", "").strip() or None,
+        purpose=request.form.get("purpose", "").strip() or None,
+        notes=request.form.get("notes", "").strip() or None,
+        visibility="team",
+        created_by_user_id=user_id,
+    )
+    flash(f"Added '{funder_name}' to application history.")
+    return redirect(url_for("history_view"))
+
+
+@app.route("/history/<int:hid>/update", methods=["POST"])
+def history_update(hid):
+    user_id = session.get("user_id")
+    if not user_id:
+        flash("You must be logged in to edit.")
+        return redirect(url_for("login"))
+    funder_name = request.form.get("funder_name", "").strip()
+    if not funder_name:
+        flash("Funder name is required.")
+        return redirect(url_for("history_view"))
+    db.history_update(
+        hid=hid,
+        funder_name=funder_name,
+        funder_ein=request.form.get("funder_ein", "").strip().replace("-", "") or None,
+        program_name=request.form.get("program_name", "").strip() or None,
+        applied_date=request.form.get("applied_date", "").strip() or None,
+        decision_date=request.form.get("decision_date", "").strip() or None,
+        outcome=request.form.get("outcome", "Pending"),
+        amount_requested=request.form.get("amount_requested", "").strip() or None,
+        amount_awarded=request.form.get("amount_awarded", "").strip() or None,
+        purpose=request.form.get("purpose", "").strip() or None,
+        notes=request.form.get("notes", "").strip() or None,
+    )
+    flash("Application history updated.")
+    return redirect(url_for("history_view"))
+
+
+@app.route("/history/<int:hid>/delete", methods=["POST"])
+def history_delete(hid):
+    user_id = session.get("user_id")
+    if not user_id:
+        flash("You must be logged in to delete.")
+        return redirect(url_for("login"))
+    row = db.history_get(hid)
+    db.history_delete(hid)
+    flash(f"Deleted '{row['funder_name'] if row else 'entry'}' from history.")
+    return redirect(url_for("history_view"))
+
+
 @app.route("/pipeline/add", methods=["POST"])
 def pipeline_add():
     user_id = session.get("user_id")

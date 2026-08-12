@@ -623,6 +623,11 @@ th.num {
   color: var(--red);
 }
 
+.status-Pending {
+  background: #fef3cd;
+  color: #856404;
+}
+
 /* Misc */
 .flash {
   background: #e6f2ea;

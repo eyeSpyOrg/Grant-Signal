@@ -100,6 +100,25 @@ CREATE TABLE IF NOT EXISTS pipeline (
     updated_at DOUBLE PRECISION NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_pipeline_created_by ON pipeline(created_by_user_id);
+CREATE TABLE IF NOT EXISTS grant_history (
+    id SERIAL PRIMARY KEY,
+    created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    funder_name TEXT NOT NULL,
+    funder_ein TEXT,
+    program_name TEXT,
+    applied_date TEXT,
+    decision_date TEXT,
+    outcome TEXT NOT NULL DEFAULT 'Pending',
+    amount_requested TEXT,
+    amount_awarded TEXT,
+    purpose TEXT,
+    notes TEXT,
+    visibility TEXT DEFAULT 'team',
+    created_at DOUBLE PRECISION NOT NULL,
+    updated_at DOUBLE PRECISION NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_grant_history_created_by ON grant_history(created_by_user_id);
+CREATE INDEX IF NOT EXISTS idx_grant_history_outcome ON grant_history(outcome);
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT
@@ -107,6 +126,7 @@ CREATE TABLE IF NOT EXISTS settings (
 """
 
 PIPELINE_STATUSES = ["Researching", "Good Fit", "Contacted", "LOI Sent", "Applied", "Awarded", "Declined"]
+HISTORY_OUTCOMES = ["Pending", "Awarded", "Declined"]
 
 # Only deadlines shaped like YYYY-MM-DD are safe to cast to ::date; guard every
 # cast against stray text so a bad value can't abort the whole query.
@@ -224,6 +244,110 @@ def get_username_by_id(user_id):
         return None
     row = get_db().execute("SELECT username FROM users WHERE id=%s", (user_id,)).fetchone()
     return row["username"] if row else None
+
+
+# ---------- grant history ----------
+
+def history_add(funder_name, funder_ein=None, program_name=None, applied_date=None,
+                decision_date=None, outcome="Pending", amount_requested=None,
+                amount_awarded=None, purpose=None, notes=None,
+                visibility="team", created_by_user_id=None):
+    db = get_db()
+    now = time.time()
+    cur = db.execute(
+        "INSERT INTO grant_history (funder_name, funder_ein, program_name, applied_date,"
+        " decision_date, outcome, amount_requested, amount_awarded, purpose, notes,"
+        " visibility, created_by_user_id, created_at, updated_at)"
+        " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+        (funder_name, funder_ein or None, program_name or None, applied_date or None,
+         decision_date or None, outcome, amount_requested or None, amount_awarded or None,
+         purpose or None, notes or None, visibility, created_by_user_id, now, now))
+    db.commit()
+    return cur.fetchone()["id"]
+
+
+def history_all_team(outcome=None, year=None, min_amount=None, max_amount=None):
+    """Get team application history with optional filters."""
+    sql = "SELECT * FROM grant_history WHERE visibility='team'"
+    params = []
+    if outcome:
+        sql += " AND outcome=%s"
+        params.append(outcome)
+    if year:
+        # Filter by applied_date year (format: YYYY-MM-DD)
+        sql += " AND applied_date LIKE %s"
+        params.append(f"{year}-%")
+    if min_amount:
+        # Parse amount (strip $, commas) and compare as number
+        sql += " AND (amount_requested ~ '^[0-9]' OR amount_awarded ~ '^[0-9]')"
+    if max_amount:
+        # For max_amount filtering, we'd need to parse and convert, so we'll apply in Python
+        pass
+    sql += " ORDER BY applied_date DESC NULLS LAST, updated_at DESC"
+    rows = get_db().execute(sql, params).fetchall()
+    # Client-side filtering for max_amount (since amounts are text)
+    if max_amount:
+        def parse_amount(s):
+            if not s:
+                return None
+            # Extract digits, commas, optional decimal
+            import re
+            match = re.search(r'\$?([0-9,]+(?:\.[0-9]{2})?)', str(s))
+            if match:
+                try:
+                    return float(match.group(1).replace(',', ''))
+                except ValueError:
+                    return None
+            return None
+        try:
+            max_val = float(max_amount)
+            rows = [r for r in rows if parse_amount(r.get('amount_requested')) and parse_amount(r.get('amount_requested')) <= max_val
+                                   or parse_amount(r.get('amount_awarded')) and parse_amount(r.get('amount_awarded')) <= max_val]
+        except ValueError:
+            pass
+    return rows
+
+
+def history_personal(user_id, outcome=None):
+    sql = "SELECT * FROM grant_history WHERE visibility='personal' AND created_by_user_id=%s"
+    params = [user_id]
+    if outcome:
+        sql += " AND outcome=%s"
+        params.append(outcome)
+    sql += " ORDER BY applied_date DESC NULLS LAST, updated_at DESC"
+    return get_db().execute(sql, params).fetchall()
+
+
+def history_get(hid):
+    return get_db().execute("SELECT * FROM grant_history WHERE id=%s", (hid,)).fetchone()
+
+
+def history_update(hid, funder_name, funder_ein=None, program_name=None,
+                   applied_date=None, decision_date=None, outcome="Pending",
+                   amount_requested=None, amount_awarded=None,
+                   purpose=None, notes=None, visibility=None):
+    db = get_db()
+    now = time.time()
+    sql = ("UPDATE grant_history SET funder_name=%s, funder_ein=%s, program_name=%s,"
+           " applied_date=%s, decision_date=%s, outcome=%s, amount_requested=%s,"
+           " amount_awarded=%s, purpose=%s, notes=%s, updated_at=%s")
+    params = [funder_name, funder_ein or None, program_name or None,
+              applied_date or None, decision_date or None, outcome,
+              amount_requested or None, amount_awarded or None,
+              purpose or None, notes or None, now]
+    if visibility:
+        sql += ", visibility=%s"
+        params.append(visibility)
+    sql += " WHERE id=%s"
+    params.append(hid)
+    db.execute(sql, params)
+    db.commit()
+
+
+def history_delete(hid):
+    db = get_db()
+    db.execute("DELETE FROM grant_history WHERE id=%s", (hid,))
+    db.commit()
 
 
 # ---------- org cache (ProPublica JSON, 24h TTL) ----------

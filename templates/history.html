@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% block title %}Application History — Eye Spy Grant Scout{% endblock %}
+{% block content %}
+<h1>📋 Application History</h1>
+<p class="muted">A shared record of every grant Eye Spy has applied for — what we asked for, what happened, and what we
+    learned.</p>
+
+<!-- Quick outcome filter tabs -->
+<div style="display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:1rem;">
+    <a class="btn btn-sm {% if not outcome_filter %}btn{% else %}btn-ghost{% endif %}"
+        href="{{ url_for('history_view') }}">All</a>
+    {% for o in outcomes %}
+    <a class="btn btn-sm {% if outcome_filter==o %}btn{% else %}btn-ghost{% endif %}"
+        href="{{ url_for('history_view', outcome=o) }}">{{ o }}</a>
+    {% endfor %}
+</div>
+
+<!-- Advanced filters -->
+<details class="card" style="margin-bottom:1rem;">
+    <summary style="font-weight:600;">🔍 Filter by year / amount</summary>
+    <form method="get" action="{{ url_for('history_view') }}" style="margin-top:.75rem;">
+        <div class="form-row">
+            <div>
+                <label for="f-outcome">Outcome</label>
+                <select id="f-outcome" name="outcome">
+                    <option value="">All outcomes</option>
+                    {% for o in outcomes %}<option value="{{ o }}" {% if outcome_filter==o %}selected{% endif %}>{{ o }}
+                    </option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="f-year">Year applied</label>
+                <select id="f-year" name="year">
+                    <option value="">All years</option>
+                    {% for y in years %}<option value="{{ y }}" {% if year_filter==y %}selected{% endif %}>{{ y }}
+                    </option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="f-min">Min amount requested ($)</label>
+                <input type="number" id="f-min" name="min_amount" value="{{ min_amount or '' }}"
+                    placeholder="e.g. 5000">
+            </div>
+            <div>
+                <label for="f-max">Max amount requested ($)</label>
+                <input type="number" id="f-max" name="max_amount" value="{{ max_amount or '' }}"
+                    placeholder="e.g. 50000">
+            </div>
+            <div class="shrink" style="align-self:flex-end;">
+                <button class="btn" type="submit">Apply</button>
+                <a class="btn btn-ghost" href="{{ url_for('history_view') }}">Clear</a>
+            </div>
+        </div>
+    </form>
+</details>
+
+<!-- Add form (always visible, but disabled if not logged in) -->
+<details class="card" {% if not session.get('user_id') %}open{% endif %}>
+    <summary><strong>+ Log a past application</strong></summary>
+    <form method="post" action="{{ url_for('history_add') }}" style="margin-top:.75rem;" {% if not
+        session.get('user_id') %}onsubmit="alert('Please log in first.'); return false;" {% endif %}>
+        <div class="form-row">
+            <div class="grow">
+                <label for="h-funder">Funder name <span aria-hidden="true">*</span></label>
+                <input type="text" id="h-funder" name="funder_name" required placeholder="e.g. Delores Barr Weaver Fund"
+                    {% if not session.get('user_id') %}disabled{% endif %}>
+            </div>
+            <div>
+                <label for="h-ein">Funder EIN (optional)</label>
+                <input type="text" id="h-ein" name="funder_ein" placeholder="59-1234567" {% if not
+                    session.get('user_id') %}disabled{% endif %}>
+            </div>
+            <div class="grow">
+                <label for="h-program">Grant program / RFP name</label>
+                <input type="text" id="h-program" name="program_name" placeholder="e.g. Community Impact Grant" {% if
+                    not session.get('user_id') %}disabled{% endif %}>
+            </div>
+        </div>
+        <div class="form-row">
+            <div>
+                <label for="h-applied">Date applied</label>
+                <input type="date" id="h-applied" name="applied_date" {% if not session.get('user_id') %}disabled{%
+                    endif %}>
+            </div>
+            <div>
+                <label for="h-decision">Decision date</label>
+                <input type="date" id="h-decision" name="decision_date" {% if not session.get('user_id') %}disabled{%
+                    endif %}>
+            </div>
+            <div>
+                <label for="h-outcome">Outcome</label>
+                <select id="h-outcome" name="outcome" {% if not session.get('user_id') %}disabled{% endif %}>
+                    {% for o in outcomes %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="h-req">Amount requested</label>
+                <input type="text" id="h-req" name="amount_requested" placeholder="$10,000" {% if not
+                    session.get('user_id') %}disabled{% endif %}>
+            </div>
+            <div>
+                <label for="h-awd">Amount awarded</label>
+                <input type="text" id="h-awd" name="amount_awarded" placeholder="$8,000" {% if not
+                    session.get('user_id') %}disabled{% endif %}>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="grow">
+                <label for="h-purpose">What we applied for</label>
+                <input type="text" id="h-purpose" name="purpose"
+                    placeholder="Brief description of the project / program" {% if not session.get('user_id')
+                    %}disabled{% endif %}>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="grow">
+                <label for="h-notes">Notes / lessons learned</label>
+                <textarea id="h-notes" name="notes" placeholder="Reviewer feedback, reasons for decision, next steps…"
+                    {% if not session.get('user_id') %}disabled{% endif %}></textarea>
+            </div>
+            <div class="shrink" style="align-self:flex-end;">
+                {% if session.get('user_id') %}
+                <button class="btn" type="submit">Save</button>
+                {% else %}
+                <a class="btn" href="{{ url_for('login') }}">Log in to add</a>
+                {% endif %}
+            </div>
+        </div>
+    </form>
+</details>
+
+<!-- Results -->
+{% if rows %}
+<p class="muted" style="margin-top:.5rem;">{{ rows|length }} entr{{ 'y' if rows|length==1 else 'ies' }}
+    {%- if outcome_filter %} — {{ outcome_filter }}{% endif %}
+    {%- if year_filter %} — {{ year_filter }}{% endif %}
+</p>
+
+{% for r in rows %}
+<div class="card">
+    <h2 style="margin-top:0; display:flex; align-items:center; gap:.5rem; flex-wrap:wrap;">
+        {% if r.funder_ein %}<a href="{{ url_for('org_profile', ein=r.funder_ein) }}">{{ r.funder_name }}</a>{% else
+        %}{{ r.funder_name }}{% endif %}
+        <span class="badge status-{{ r.outcome }}">{{ r.outcome }}</span>
+        {% if r.program_name %}<span class="badge badge-tag">{{ r.program_name }}</span>{% endif %}
+    </h2>
+
+    <div style="display:flex; gap:2rem; flex-wrap:wrap; font-size:.92rem; color:var(--muted); margin-bottom:.75rem;">
+        {% if r.applied_date %}<span>Applied: <strong>{{ r.applied_date }}</strong></span>{% endif %}
+        {% if r.decision_date %}<span>Decision: <strong>{{ r.decision_date }}</strong></span>{% endif %}
+        {% if r.amount_requested %}<span>Requested: <strong>{{ r.amount_requested }}</strong></span>{% endif %}
+        {% if r.amount_awarded %}<span>Awarded: <strong>{{ r.amount_awarded }}</strong></span>{% endif %}
+        {% if r.created_by_username %}<span>Added by: {{ r.created_by_username }}</span>{% endif %}
+    </div>
+
+    {% if r.purpose %}<p style="margin:.25rem 0"><em>{{ r.purpose }}</em></p>{% endif %}
+    {% if r.notes %}<p style="margin:.25rem 0; white-space:pre-wrap">{{ r.notes }}</p>{% endif %}
+
+    {% if session.get('user_id') %}
+    <details style="margin-top:.75rem;">
+        <summary style="cursor:pointer; color:var(--accent); font-size:.9rem;">✎ Edit this entry</summary>
+        <form method="post" action="{{ url_for('history_update', hid=r.id) }}" style="margin-top:.75rem;">
+            <div class="form-row">
+                <div class="grow">
+                    <label for="ef-{{ r.id }}">Funder name</label>
+                    <input type="text" id="ef-{{ r.id }}" name="funder_name" value="{{ r.funder_name }}" required>
+                </div>
+                <div>
+                    <label for="ee-{{ r.id }}">EIN</label>
+                    <input type="text" id="ee-{{ r.id }}" name="funder_ein" value="{{ r.funder_ein or '' }}">
+                </div>
+                <div class="grow">
+                    <label for="ep-{{ r.id }}">Program name</label>
+                    <input type="text" id="ep-{{ r.id }}" name="program_name" value="{{ r.program_name or '' }}">
+                </div>
+            </div>
+            <div class="form-row">
+                <div>
+                    <label for="ea-{{ r.id }}">Date applied</label>
+                    <input type="date" id="ea-{{ r.id }}" name="applied_date" value="{{ r.applied_date or '' }}">
+                </div>
+                <div>
+                    <label for="ed-{{ r.id }}">Decision date</label>
+                    <input type="date" id="ed-{{ r.id }}" name="decision_date" value="{{ r.decision_date or '' }}">
+                </div>
+                <div>
+                    <label for="eo-{{ r.id }}">Outcome</label>
+                    <select id="eo-{{ r.id }}" name="outcome">
+                        {% for o in outcomes %}<option value="{{ o }}" {% if r.outcome==o %}selected{% endif %}>{{ o }}
+                        </option>{% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="er-{{ r.id }}">Requested</label>
+                    <input type="text" id="er-{{ r.id }}" name="amount_requested"
+                        value="{{ r.amount_requested or '' }}">
+                </div>
+                <div>
+                    <label for="ew-{{ r.id }}">Awarded</label>
+                    <input type="text" id="ew-{{ r.id }}" name="amount_awarded" value="{{ r.amount_awarded or '' }}">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="grow">
+                    <label for="epu-{{ r.id }}">What we applied for</label>
+                    <input type="text" id="epu-{{ r.id }}" name="purpose" value="{{ r.purpose or '' }}">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="grow">
+                    <label for="en-{{ r.id }}">Notes / lessons learned</label>
+                    <textarea id="en-{{ r.id }}" name="notes">{{ r.notes or '' }}</textarea>
+                </div>
+                <div class="shrink"><button class="btn" type="submit">Save changes</button></div>
+            </div>
+        </form>
+        <form method="post" action="{{ url_for('history_delete', hid=r.id) }}" style="margin-top:.5rem;"
+            onsubmit="return confirm('Delete this history entry for {{ r.funder_name|e }}?')">
+            <button class="btn btn-danger btn-sm" type="submit">Delete entry</button>
+        </form>
+    </details>
+    {% endif %}
+</div>
+{% endfor %}
+
+{% else %}
+<div class="card" style="text-align:center; color:var(--muted);">
+    <p style="margin-bottom:.75rem;">No application history yet.</p>
+    {% if session.get('user_id') %}
+    <p>Use the form above to log your first entry, or check your filters.</p>
+    {% else %}
+    <p><a href="{{ url_for('login') }}" class="btn btn-sm">Log in</a> to start logging applications.</p>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}
